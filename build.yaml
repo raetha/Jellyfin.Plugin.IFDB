@@ -1,16 +1,17 @@
 ---
-name: "Template"
-guid: "eb5d7894-8eef-4b36-aa6f-5d124e828ce1"
+name: "IFDB"
+guid: "0f18c602-5d24-4f88-bb6e-9e59a2efb1cd"
 version: "1.0.0.0"
-targetAbi: "10.9.0.0"
-framework: "net8.0"
-overview: "Short description about your plugin"
+targetAbi: "10.11.0.0"
+framework: "net9.0"
+overview: "Get movie metadata the Internet Fanedit Database (IFDB)"
 description: >
-  This is a longer description that can span more than one
-  line and include details about your plugin.
-category: "General"
-owner: "jellyfin"
+  Fetches metadata for fan edits from fanedit.org, including title, faneditor, genres, rating, and poster.
+category: "Metadata"
+owner: "raetha"
 artifacts:
-- "Jellyfin.Plugin.Template.dll"
+- "Jellyfin.Plugin.Ifdb.dll"
+- "HtmlAgilityPack.dll"
+- "SixLabors.ImageSharp.dll"
 changelog: >
-  changelog
+  Initial release for Jellyfin 10.11
