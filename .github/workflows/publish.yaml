@@ -41,7 +41,11 @@ jobs:
 
       # 3️⃣ Fetch build.yaml and generate-manifest.js from main branch
       - name: Fetch build.yaml and manifest script
-        run: git fetch origin main && git checkout origin/main -- build.yaml scripts/generate-manifest.js
+        run: |
+          git fetch origin main
+          git checkout origin/main -- build.yaml scripts/generate-manifest.js
+          # Unstage these files so they won't be committed
+          git reset build.yaml scripts/generate-manifest.js
 
       # 4️⃣ Set up Node
       - uses: actions/setup-node@v4
