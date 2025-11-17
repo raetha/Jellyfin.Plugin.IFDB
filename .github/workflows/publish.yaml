@@ -1,10 +1,13 @@
-name: '🚀 Publish Plugin'
+name: '🚀 Publish Plugin with Manifest'
 
 on:
   release:
     types:
       - released
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   call:
@@ -16,3 +19,70 @@ jobs:
       deploy-host: ${{ secrets.DEPLOY_HOST }}
       deploy-user: ${{ secrets.DEPLOY_USER }}
       deploy-key: ${{ secrets.DEPLOY_KEY }}
+
+  manifest:
+    needs: call
+    runs-on: ubuntu-latest
+    steps:
+      # 1️⃣ Checkout repository
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # 2️⃣ Switch to or create manifest branch
+      - name: Switch to manifest branch
+        run: |
+          if git show-ref --verify --quiet refs/heads/manifest; then
+            git checkout manifest
+          else
+            git checkout --orphan manifest
+            git rm -rf .
+
+      # 3️⃣ Fetch build.yaml and generate-manifest.js from main branch
+      - name: Fetch build.yaml and manifest script
+        run: git fetch origin main && git checkout origin/main -- build.yaml scripts/generate-manifest.js
+
+      # 4️⃣ Set up Node
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # 5️⃣ Install dependencies
+      - run: npm install yaml
+
+      # 6️⃣ Download the plugin build artifact from Publish Plugin job
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: build-artifact
+          path: ./artifacts
+
+      # 7️⃣ Determine actual artifact paths
+      - name: Determine artifact paths
+        id: artifacts
+        run: |
+          ZIP=$(ls ./artifacts/*.zip | head -n1)
+          MD5=$(ls ./artifacts/*.md5 | head -n1)
+          echo "zip=$ZIP" >> $GITHUB_OUTPUT
+          echo "md5=$MD5" >> $GITHUB_OUTPUT
+
+      # 8️⃣ Generate manifest.json
+      - name: Generate manifest.json
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_PACKAGE_PATH: ${{ steps.artifacts.outputs.zip }}
+          RELEASE_URL: https://github.com/${{ github.repository }}/releases/download/${{ github.event.release.tag_name }}/$(basename ${{ steps.artifacts.outputs.zip }})
+          RELEASE_MD5: ${{ steps.artifacts.outputs.md5 }}
+        run: node scripts/generate-manifest.js
+
+      # 9️⃣ Commit and push updated manifest.json
+      - name: Commit and push manifest.json
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add manifest.json
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+          else
+            git commit -m "Update manifest.json for version ${{ github.event.release.tag_name }}"
+            git push --force --set-upstream origin manifest

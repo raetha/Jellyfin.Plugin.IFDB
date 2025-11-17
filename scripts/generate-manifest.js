@@ -21,18 +21,20 @@ const data = YAML.parse(fs.readFileSync("build.yaml", "utf8"));
 let checksum;
 if (releaseMd5Path && fs.existsSync(releaseMd5Path)) {
   checksum = fs.readFileSync(releaseMd5Path, "utf8").trim();
-} else {
+} else if (fs.existsSync(releasePackagePath)) {
   const packageBuffer = fs.readFileSync(releasePackagePath);
   checksum = crypto.createHash("md5").update(packageBuffer).digest("hex");
+} else {
+  console.error(`Cannot find release package at ${releasePackagePath}`);
+  process.exit(1);
 }
 
 // Timestamp in ISO 8601 UTC format
 const timestamp = new Date().toISOString();
 
 // Load existing manifest.json if it exists
-let manifest = [];
 const manifestPath = "manifest.json";
-
+let manifest = [];
 if (fs.existsSync(manifestPath)) {
   manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
 }
@@ -62,17 +64,14 @@ const versionData = {
   timestamp: timestamp
 };
 
-// Check if version already exists
+// Update existing version or prepend new
 const existingVersion = plugin.versions.find(v => v.version === data.version);
 if (existingVersion) {
-  // Update all fields
   Object.assign(existingVersion, versionData);
 } else {
-  // Prepend new version
   plugin.versions.unshift(versionData);
 }
 
 // Write updated manifest.json
 fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 4));
 console.log(`Updated manifest.json with version ${data.version}`);
-
