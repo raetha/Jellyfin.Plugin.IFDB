@@ -37,6 +37,7 @@ jobs:
           else
             git checkout --orphan manifest
             git rm -rf .
+          fi
 
       # 3️⃣ Fetch build.yaml and generate-manifest.js from main branch
       - name: Fetch build.yaml and manifest script
@@ -86,3 +87,4 @@ jobs:
           else
             git commit -m "Update manifest.json for version ${{ github.event.release.tag_name }}"
             git push --force --set-upstream origin manifest
+          fi
