@@ -68,15 +68,17 @@ jobs:
         run: |
           ZIP=$(ls ./artifacts/*.zip | head -n1)
           MD5=$(ls ./artifacts/*.md5 | head -n1)
+          ZIP_BASENAME=$(basename "$ZIP")
           echo "zip=$ZIP" >> $GITHUB_OUTPUT
           echo "md5=$MD5" >> $GITHUB_OUTPUT
+          echo "zip_basename=$ZIP_BASENAME" >> $GITHUB_OUTPUT
 
       # 8️⃣ Generate manifest.json
       - name: Generate manifest.json
         env:
           RELEASE_TAG: ${{ github.event.release.tag_name }}
           RELEASE_PACKAGE_PATH: ${{ steps.artifacts.outputs.zip }}
-          RELEASE_URL: https://github.com/${{ github.repository }}/releases/download/${{ github.event.release.tag_name }}/$(basename ${{ steps.artifacts.outputs.zip }})
+          RELEASE_URL: https://github.com/${{ github.repository }}/releases/download/${{ github.event.release.tag_name }}/${{ steps.artifacts.outputs.zip_basename }}
           RELEASE_MD5: ${{ steps.artifacts.outputs.md5 }}
         run: node scripts/generate-manifest.js
 
