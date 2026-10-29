@@ -8,12 +8,12 @@
         "category": "Metadata",
         "versions": [
             {
-                "version": "2.0.0.4",
-                "changelog": "Development build from dev (cc2294f): Live check: report a Cloudflare block of the runner as a warning",
+                "version": "2.0.0.5",
+                "changelog": "Development build from dev (352cefc): Validate downloaded images and clean scraped text",
                 "targetAbi": "12.0.0.0",
-                "sourceUrl": "https://github.com/raetha/Jellyfin.Plugin.IFDB/releases/download/dev-build/ifdb_2.0.0.4.zip",
-                "checksum": "8d297a60913039db6e6f3153066f7f14",
-                "timestamp": "2026-10-29T19:21:17.370Z"
+                "sourceUrl": "https://github.com/raetha/Jellyfin.Plugin.IFDB/releases/download/dev-build/ifdb_2.0.0.5.zip",
+                "checksum": "2f1b1036072f59d41dd0b58be550808e",
+                "timestamp": "2026-10-29T19:37:18.621Z"
             }
         ]
     }
