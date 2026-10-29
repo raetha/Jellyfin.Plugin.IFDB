@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net9.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <RootNamespace>Jellyfin.Plugin.Ifdb</RootNamespace>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
@@ -9,7 +9,7 @@
     <AnalysisMode>AllEnabledByDefault</AnalysisMode>
     <CodeAnalysisRuleSet>../jellyfin.ruleset</CodeAnalysisRuleSet>
     <!-- The Jellyfin release line this build targets. The weekly compatibility check overrides it to try the newest Jellyfin. -->
-    <JellyfinPackageVersion Condition="'$(JellyfinPackageVersion)' == ''">10.11.*</JellyfinPackageVersion>
+    <JellyfinPackageVersion Condition="'$(JellyfinPackageVersion)' == ''">12.*</JellyfinPackageVersion>
   </PropertyGroup>
 
   <ItemGroup>
