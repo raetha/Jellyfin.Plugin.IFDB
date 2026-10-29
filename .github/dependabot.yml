@@ -1,0 +1,27 @@
+# Weekly dependency updates, opened against dev so they go through dev builds first.
+version: 2
+updates:
+  - package-ecosystem: nuget
+    directory: /
+    target-branch: dev
+    schedule:
+      interval: weekly
+    groups:
+      analyzers:
+        patterns: ['*Analyzer*', 'StyleCop.*']
+      tests:
+        patterns: ['xunit*', 'Microsoft.NET.Test.Sdk', 'coverlet.*', 'NSubstitute', 'Microsoft.Extensions.TimeProvider.Testing']
+    ignore:
+      # Moving to a new Jellyfin major is a deliberate retarget (new targetAbi and framework), not a routine bump.
+      - dependency-name: 'Jellyfin.*'
+        update-types: ['version-update:semver-major']
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: dev
+    schedule:
+      interval: weekly
+  - package-ecosystem: npm
+    directory: /scripts
+    target-branch: dev
+    schedule:
+      interval: weekly

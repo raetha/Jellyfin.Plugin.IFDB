@@ -1,0 +1,173 @@
+name: 'Release'
+
+# Stable: publishing a GitHub release tagged vX.Y.Z (not marked pre-release) builds plugin version
+#   X.Y.Z.0, attaches it to the release and adds it to manifest.json. The tag must match
+#   build.yaml's version, and the release's target branch decides which Jellyfin it's built for.
+# Dev: every push to dev builds X.Y.Z.<run number> from build.yaml's upcoming version, replaces
+#   the rolling "dev-build" pre-release and makes it the only entry in manifest-dev.json.
+# Both run the full CI (build, tests, coverage gate) first and publish nothing if it fails.
+
+on:
+  release:
+    types: [published]
+  push:
+    branches: [dev]
+    paths-ignore: ['**/*.md']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Work out version
+    runs-on: ubuntu-latest
+    outputs:
+      channel: ${{ steps.version.outputs.channel }}
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Work out version
+        id: version
+        env:
+          EVENT: ${{ github.event_name }}
+          PRERELEASE: ${{ github.event.release.prerelease }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          planned=$(grep -Po '^version:\s*"?\K[0-9.]+' build.yaml)
+
+          if [ "$EVENT" = "release" ]; then
+            if [ "$PRERELEASE" = "true" ]; then
+              echo "::notice::Pre-releases aren't published to a manifest; dev builds come from the dev branch."
+              echo "channel=skip" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "::error::Release tags must look like v2.0.0, got $TAG"
+              exit 1
+            fi
+            version="${TAG#v}.0"
+            if [ "$version" != "$planned" ]; then
+              echo "::error file=build.yaml::Tag $TAG means version $version, but build.yaml at that commit says $planned"
+              exit 1
+            fi
+            echo "channel=stable" >> "$GITHUB_OUTPUT"
+          else
+            if [ "$GITHUB_REF_NAME" != "dev" ]; then
+              echo "::error::Dev builds are only published from the dev branch"
+              exit 1
+            fi
+            version="${planned%.*}.${GITHUB_RUN_NUMBER}"
+            echo "channel=dev" >> "$GITHUB_OUTPUT"
+          fi
+
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "Publishing ${version}"
+
+  build:
+    name: CI
+    needs: prepare
+    if: needs.prepare.outputs.channel != 'skip'
+    uses: ./.github/workflows/ci.yaml
+    with:
+      version: ${{ needs.prepare.outputs.version }}
+
+  publish:
+    name: Publish ${{ needs.prepare.outputs.channel }} ${{ needs.prepare.outputs.version }}
+    needs: [prepare, build]
+    runs-on: ubuntu-latest
+    # Stable and dev publishing both write to the manifest branch; never at the same time.
+    concurrency:
+      group: manifest
+      cancel-in-progress: false
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      CHANNEL: ${{ needs.prepare.outputs.channel }}
+      VERSION: ${{ needs.prepare.outputs.version }}
+      ZIP: ${{ needs.build.outputs.zip }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: plugin
+          path: dist
+
+      - name: Attach to the release
+        if: env.CHANNEL == 'stable'
+        run: gh release upload "$GITHUB_REF_NAME" dist/* --clobber
+
+      - name: Replace the dev-build pre-release
+        if: env.CHANNEL == 'dev'
+        run: |
+          subject=$(git log -1 --format=%s)
+          {
+            echo "Development build ${VERSION} from dev (${GITHUB_SHA::7}): ${subject}"
+            echo
+            echo "For testing only. Install it by adding this plugin repository in Jellyfin:"
+            echo "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/refs/heads/manifest/manifest-dev.json"
+          } > "$RUNNER_TEMP/notes.md"
+          gh release delete dev-build --yes --cleanup-tag || true
+          gh release create dev-build dist/* \
+            --prerelease --latest=false \
+            --target "$GITHUB_SHA" \
+            --title "Development build ${VERSION}" \
+            --notes-file "$RUNNER_TEMP/notes.md"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: scripts/package-lock.json
+
+      - name: Update the plugin repository manifest
+        run: |
+          (cd scripts && npm ci --no-audit --no-fund)
+
+          if [ "$CHANNEL" = "stable" ]; then
+            manifest=manifest.json
+            tag="$GITHUB_REF_NAME"
+            export CHANGELOG=""
+          else
+            manifest=manifest-dev.json
+            tag=dev-build
+            export REPLACE_VERSIONS=1
+            export CHANGELOG="Development build from dev (${GITHUB_SHA::7}): $(git log -1 --format=%s)"
+          fi
+
+          worktree="$RUNNER_TEMP/manifest"
+          if git ls-remote --exit-code --heads origin manifest >/dev/null; then
+            git worktree add "$worktree" origin/manifest
+          else
+            git worktree add --detach "$worktree"
+            git -C "$worktree" checkout --orphan manifest
+            git -C "$worktree" rm -rf --quiet .
+          fi
+
+          BUILD_YAML="$PWD/build.yaml" \
+          MANIFEST_PATH="$worktree/$manifest" \
+          SOURCE_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${tag}/${ZIP}" \
+          CHECKSUM="$(cat "dist/${ZIP%.zip}.md5")" \
+            node scripts/generate-manifest.js
+
+          cd "$worktree"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$manifest"
+          if git diff --cached --quiet; then
+            echo "No manifest changes."
+            exit 0
+          fi
+          git commit -m "Add ${VERSION} to ${manifest}"
+          for attempt in 1 2 3; do
+            git push origin HEAD:manifest && exit 0
+            git fetch origin manifest && git rebase origin/manifest
+          done
+          exit 1

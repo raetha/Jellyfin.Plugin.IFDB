@@ -1,0 +1,75 @@
+name: 'Weekly checks'
+
+# Early warning, run every Monday (and on demand):
+# - newest-jellyfin: builds and tests main and dev against the newest stable Jellyfin packages, so an
+#   API change in a new Jellyfin release shows up before users hit it.
+# - live-site: runs the live tests (known searches and entries) against the real fanedit.org, to
+#   catch layout changes. A failure here can also mean the site's bot protection blocked GitHub.
+# GitHub emails the repository owner when a scheduled run fails.
+
+on:
+  schedule:
+    - cron: '17 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  newest-jellyfin:
+    name: Newest Jellyfin (${{ matrix.branch }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        branch: [main, dev]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ matrix.branch }}
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            9.0.x
+            10.0.x
+
+      - name: Build and test against the newest Jellyfin
+        run: |
+          dotnet test --configuration Release -p:JellyfinPackageVersion='*' 2>&1 | tee test.log
+          {
+            echo "### ${{ matrix.branch }} against the newest Jellyfin"
+            grep -Pho '"Jellyfin\.Controller/\K[0-9][^"]*' Jellyfin.Plugin.Ifdb/obj/project.assets.json 2>/dev/null | head -1 | sed 's/^/Tested with Jellyfin.Controller /'
+            grep -E 'Passed!|Failed!' test.log || echo "Build failed; see the log."
+          } >> "$GITHUB_STEP_SUMMARY"
+          grep -q 'Passed!' test.log
+
+  live-site:
+    name: Live fanedit.org
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: dev
+
+      - name: Read build.yaml
+        id: plugin
+        run: |
+          framework=$(grep -Po '^framework:\s*"?\K[a-z0-9.]+' build.yaml)
+          echo "sdk=${framework#net}.x" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ steps.plugin.outputs.sdk }}
+
+      - name: Live tests
+        env:
+          IFDB_LIVE_TESTS: '1'
+        run: |
+          dotnet test --configuration Release --filter "FullyQualifiedName~LiveSiteTests" --logger "console;verbosity=normal" 2>&1 | tee live.log
+          {
+            echo "### Live fanedit.org tests"
+            grep -E 'Passed!|Failed!' live.log || echo "Build failed; see the log."
+            grep -q 'IfdbBlockedException' live.log && echo "fanedit.org's bot protection blocked the requests." || true
+          } >> "$GITHUB_STEP_SUMMARY"
+          grep -q 'Passed!' live.log

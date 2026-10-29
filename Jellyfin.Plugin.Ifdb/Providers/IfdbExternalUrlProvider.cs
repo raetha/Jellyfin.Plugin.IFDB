@@ -27,8 +27,7 @@ public class IfdbExternalUrlProvider : IExternalUrlProvider
         var id = IfdbUrls.NormalizeId(item.GetProviderId(Constants.ProviderIdKey));
         if (id is not null)
         {
-            var baseUrl = Plugin.Instance?.Configuration.BaseUrl ?? new PluginConfiguration().BaseUrl;
-            yield return IfdbUrls.BuildEntryUrl(baseUrl, id);
+            yield return IfdbUrls.BuildEntryUrl(PluginConfigurationProvider.Current().BaseUrl, id);
         }
     }
 }

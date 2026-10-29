@@ -62,7 +62,7 @@ internal static partial class IfdbParser
                 }
 
                 // The title sits two levels inside the listing's container (see fanedit-provider).
-                var container = titleNode.ParentNode?.ParentNode ?? titleNode;
+                var container = titleNode.ParentNode.ParentNode ?? titleNode;
                 var result = new IfdbSearchResult
                 {
                     Id = id,
@@ -338,7 +338,7 @@ internal static partial class IfdbParser
         {
             foreach (var img in coverImages)
             {
-                var parentLink = img.ParentNode?.Name == "a" ? img.ParentNode.GetAttributeValue("href", string.Empty) : null;
+                var parentLink = img.ParentNode.Name == "a" ? img.ParentNode.GetAttributeValue("href", string.Empty) : null;
                 Add(IsImageUrl(parentLink) ? parentLink : ImageSource(img), img, false);
             }
         }
@@ -433,7 +433,7 @@ internal static partial class IfdbParser
     private static string MultilineText(HtmlNode node)
     {
         var markup = BreakTagRegex().Replace(node.InnerHtml, LineBreakToken);
-        var text = HtmlEntity.DeEntitize(Load(markup).DocumentNode.InnerText) ?? string.Empty;
+        var text = HtmlEntity.DeEntitize(Load(markup).DocumentNode.InnerText);
         text = WhitespaceRegex().Replace(text, " ");
 
         var lines = new List<string>();
@@ -465,7 +465,7 @@ internal static partial class IfdbParser
             return string.Empty;
         }
 
-        var decoded = HtmlEntity.DeEntitize(text) ?? string.Empty;
+        var decoded = HtmlEntity.DeEntitize(text);
         return WhitespaceRegex().Replace(decoded, " ").Trim();
     }
 

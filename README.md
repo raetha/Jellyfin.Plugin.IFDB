@@ -1,17 +1,23 @@
 # Jellyfin.Plugin.Ifdb
 A Jellyfin movie metadata provider for the [Internet Fanedit Database (IFDB)](https://fanedit.org/).
 
-Requires Jellyfin 10.11.
-
 ### Installing
 - In Jellyfin, go to Dashboard → Plugins → Repositories and add:
   `https://raw.githubusercontent.com/raetha/Jellyfin.Plugin.IFDB/refs/heads/manifest/manifest.json`
-- Install the IFDB plugin from the catalog and restart Jellyfin
+- Install IFDB from the catalog and restart Jellyfin. Jellyfin picks the newest version built for your server.
 - Keep fanedits in their own Movies library, and in that library's settings enable IFDB as a metadata downloader and image fetcher (move it to the top)
 - Scan the library, or use **Identify** on a movie
 
-To try development builds from the `dev` branch, add this repository instead:
+| Jellyfin | Plugin | Notes |
+|---|---|---|
+| 12.x | 2.x | Current, built from `main` |
+| 10.11 | 1.x | Maintenance only, from the `jellyfin-10.11` branch |
+
+#### Development builds
+Every change to the `dev` branch is published as a test build. To try them, add this repository **instead of** the one above:
 `https://raw.githubusercontent.com/raetha/Jellyfin.Plugin.IFDB/refs/heads/manifest/manifest-dev.json`
+
+They're kept in a separate repository on purpose: Jellyfin updates plugins to the highest version in any repository you've added, so mixing them would move everyone onto test builds.
 
 ### ✨ Features
 - **Automatic matching** during library scans. A movie is matched only when exactly one IFDB result is a close enough title match (fuzzy scoring that ignores punctuation, accents and word order, and tells "Episode I" from "Episode II")
@@ -40,17 +46,49 @@ Dashboard → Plugins → IFDB:
 
 ### 🩺 Troubleshooting
 - **"fanedit.org blocked the request" in the log:** fanedit.org sits behind Cloudflare bot protection, which sometimes refuses requests from servers. Wait and try again later. If it persists, set a different User-Agent in the plugin settings.
-- **A movie wasn't matched automatically:** the log says whether there was no close match or several equally good ones. Use **Identify**, or lower the automatic match score.
-- **Items identified by version 1.x** stored a numeric IFDB id. They still work, and switch to the new id format on their next metadata refresh.
+- **A movie wasn't matched automatically:** the log says how many results were checked. Use **Identify**, or lower the automatic match score.
+- **Items identified by version 1.10.11** stored a numeric IFDB id. They still work, and switch to the new id format on their next metadata refresh.
 
-### 🧰 Build
+## Development
+
+### Build and test
 ```bash
-dotnet restore
 dotnet build -c Release
-dotnet test
+dotnet test -c Release -p:CollectCoverage=true   # fails below 100% line and branch coverage
+(cd scripts && npm ci && npm test)               # release tooling tests
 ```
 
-Pushes to `dev` are tested, built and published as the rolling `dev-build` pre-release, listed in `manifest-dev.json`. Stable releases are published from GitHub releases into `manifest.json`.
+Tests use saved fanedit.org pages in `Jellyfin.Plugin.Ifdb.Tests/Fixtures`, so they never touch the network. `LiveSiteTests` checks known searches and entries against the real site and only runs when asked:
+```bash
+IFDB_LIVE_TESTS=1 dotnet test --filter LiveSiteTests   # IFDB_USER_AGENT=... to try another User-Agent
+```
+
+### Versioning
+Plugin versions are [SemVer](https://semver.org/) (`MAJOR.MINOR.PATCH`), written as Jellyfin's four-part version with `.0` on the end (`2.1.0` → `2.1.0.0`). Which Jellyfin a build runs on is set separately by `targetAbi` in `build.yaml`. A new plugin major version accompanies a new minimum Jellyfin version.
+
+Development builds use the upcoming version from `build.yaml` with the CI run number as the fourth part (`2.1.0.57`).
+
+### Supported Jellyfin versions
+The current Jellyfin major is supported on `main`. When a new Jellyfin major ships, the previous line moves to a `jellyfin-<version>` branch for fixes only, and its last release stays installable for servers that haven't upgraded. A weekly check builds and tests against the newest Jellyfin packages so API changes are caught early.
+
+### Branches and workflows
+| Branch | Purpose | Workflows |
+|---|---|---|
+| `dev` | Day-to-day work | CI; every push publishes a dev build |
+| `main` | Released code | CI; stable releases are tagged from here |
+| `jellyfin-10.11` | Fixes for Jellyfin 10.11 (plugin 1.x) | CI; releases tagged from here |
+
+- **CI** (`ci.yaml`): build with analyzers as errors, tests with the coverage gate, release-script tests, packaging. Runs on every push and pull request.
+- **Release** (`release.yaml`): runs CI, then publishes. Dev pushes replace the `dev-build` pre-release and `manifest-dev.json`. Stable releases are attached to their GitHub release and added to `manifest.json`.
+- **Weekly checks** (`compatibility.yaml`): newest Jellyfin packages, and the live fanedit.org tests.
+- **CodeQL** and Dependabot (weekly, against `dev`).
+
+### Releasing
+1. On `dev`, set the version in `build.yaml` and `Directory.Build.props` (e.g. `2.1.0.0`) and update the changelog in `build.yaml`.
+2. Merge `dev` into `main`.
+3. Publish a GitHub release from `main` tagged `v2.1.0` (not marked pre-release). The workflow checks the tag matches `build.yaml`, builds, attaches the files and updates `manifest.json`.
+
+For a Jellyfin 10.11 fix, do the same on `jellyfin-10.11` and target the release at that branch.
 
 ### 🙏 Credits
 Scraping and title matching are based on [circulon/fanedit-provider](https://github.com/circulon/fanedit-provider) (and its predecessor [IFDB.bundle](https://github.com/circulon/IFDB.bundle)) for Plex.

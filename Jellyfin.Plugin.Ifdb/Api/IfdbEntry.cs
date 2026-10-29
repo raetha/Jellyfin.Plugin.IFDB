@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace Jellyfin.Plugin.Ifdb.Api;
 
@@ -41,4 +42,9 @@ internal sealed class IfdbEntry
     public List<IfdbImage> Images { get; } = [];
 
     public List<string> TrailerUrls { get; } = [];
+
+    /// <summary>
+    /// Gets the best image to show as a poster: the first one that isn't a wide banner, else the first image.
+    /// </summary>
+    public string? PosterUrl => (Images.FirstOrDefault(i => !i.IsLandscape) ?? Images.FirstOrDefault())?.Url;
 }

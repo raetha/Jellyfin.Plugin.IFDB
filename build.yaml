@@ -1,7 +1,7 @@
 ---
 name: "IFDB"
 guid: "0f18c602-5d24-4f88-bb6e-9e59a2efb1cd"
-version: "2.10.11.0"
+version: "1.11.0.0"
 targetAbi: "10.11.0.0"
 framework: "net9.0"
 overview: "Movie metadata for fanedits from the Internet Fanedit Database (IFDB)"
@@ -15,10 +15,10 @@ artifacts:
 - "Jellyfin.Plugin.Ifdb.dll"
 - "HtmlAgilityPack.dll"
 changelog: >
-  Rewritten for the current fanedit.org site. Fixes searches returning nothing (issue #2):
-  requests now send a User-Agent, read the current page layout, follow single-result redirects,
-  and log clearly when fanedit.org's bot protection blocks them. Unidentified movies are now
-  matched automatically using fuzzy title scoring. Adds trailers, extra cover art, backdrops,
-  fanedit type and franchise tags, the Changes section in the overview, an IFDB link, an optional
-  IMDb id, request spacing and caching, and a real settings page. Fixes Trusted Reviewer ratings
-  showing as a single-digit critic percentage. Removes the ImageSharp dependency.
+  Final release for Jellyfin 10.11; version 2.x supports Jellyfin 12. Rewritten for the current
+  fanedit.org site, fixing searches that returned nothing (issue #2): requests send a User-Agent,
+  read the current page layout, follow single-result redirects, and log clearly when fanedit.org's
+  bot protection blocks them. Unidentified movies are now matched automatically with fuzzy title
+  scoring. Adds trailers, cover art, backdrops, fanedit type and franchise tags, the Changes
+  section in the overview, an IFDB link, an optional IMDb id, request spacing and caching, and a
+  settings page. Fixes Trusted Reviewer ratings showing as a single-digit critic percentage.

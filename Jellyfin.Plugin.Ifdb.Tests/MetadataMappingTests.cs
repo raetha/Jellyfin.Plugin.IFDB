@@ -20,7 +20,7 @@ public class MetadataMappingTests
     [Fact]
     public void BuildsMovieFromEntry()
     {
-        var movie = IfdbMovieProvider.BuildMovie(Entry(), new PluginConfiguration());
+        var movie = IfdbMetadataMapper.ToMovie(Entry(), new PluginConfiguration());
 
         Assert.Equal("M4’s The Hobbit Book Edit", movie.Name);
         Assert.StartsWith("The Hobbit: An Unexpected Journey, ", movie.OriginalTitle, StringComparison.Ordinal);
@@ -36,7 +36,7 @@ public class MetadataMappingTests
     [Fact]
     public void TrustedReviewerRatingIsScaledToPercent()
     {
-        var movie = IfdbMovieProvider.BuildMovie(Entry(), new PluginConfiguration());
+        var movie = IfdbMetadataMapper.ToMovie(Entry(), new PluginConfiguration());
 
         Assert.Equal(94.0, movie.CriticRating!.Value, 3);
         Assert.Null(movie.CommunityRating);
@@ -45,8 +45,8 @@ public class MetadataMappingTests
     [Fact]
     public void ImdbIdIsOnlyStoredWhenEnabled()
     {
-        var off = IfdbMovieProvider.BuildMovie(Entry(), new PluginConfiguration());
-        var on = IfdbMovieProvider.BuildMovie(Entry(), new PluginConfiguration { SetImdbId = true });
+        var off = IfdbMetadataMapper.ToMovie(Entry(), new PluginConfiguration());
+        var on = IfdbMetadataMapper.ToMovie(Entry(), new PluginConfiguration { SetImdbId = true });
 
         Assert.Null(off.GetProviderId(MetadataProvider.Imdb));
         Assert.Equal("tt0903624", on.GetProviderId(MetadataProvider.Imdb));
@@ -55,8 +55,8 @@ public class MetadataMappingTests
     [Fact]
     public void OverviewIncludesChangesWhenEnabled()
     {
-        var with = IfdbMovieProvider.BuildOverview(Entry(), new PluginConfiguration());
-        var without = IfdbMovieProvider.BuildOverview(Entry(), new PluginConfiguration { IncludeChangesInOverview = false });
+        var with = IfdbMetadataMapper.BuildOverview(Entry(), new PluginConfiguration());
+        var without = IfdbMetadataMapper.BuildOverview(Entry(), new PluginConfiguration { IncludeChangesInOverview = false });
 
         Assert.Equal("A tighter, book-faithful Hobbit in one sitting.", without);
         Assert.NotNull(with);
@@ -68,7 +68,7 @@ public class MetadataMappingTests
     [Fact]
     public void TagsCanBeTurnedOff()
     {
-        var movie = IfdbMovieProvider.BuildMovie(Entry(), new PluginConfiguration { AddFaneditTypeTags = false, AddFranchiseTags = false });
+        var movie = IfdbMetadataMapper.ToMovie(Entry(), new PluginConfiguration { AddFaneditTypeTags = false, AddFranchiseTags = false });
 
         Assert.Empty(movie.Tags);
     }
@@ -76,7 +76,7 @@ public class MetadataMappingTests
     [Fact]
     public void LandscapeImagesBecomeBackdropsAndPortraitsPosters()
     {
-        var images = IfdbMovieImageProvider.ToRemoteImages(Entry().Images);
+        var images = IfdbMetadataMapper.ToRemoteImages(Entry().Images);
 
         Assert.Equal(
             new[] { ImageType.Backdrop, ImageType.Thumb, ImageType.Primary },
@@ -87,7 +87,7 @@ public class MetadataMappingTests
     [Fact]
     public void LandscapeOnlyEntryStillGetsAPoster()
     {
-        var images = IfdbMovieImageProvider.ToRemoteImages(
+        var images = IfdbMetadataMapper.ToRemoteImages(
             [new IfdbImage { Url = "https://fanedit.org/banner-837x390.jpg", Width = 837, Height = 390, IsMain = true }]);
 
         Assert.Contains(images, i => i.Type == ImageType.Primary);

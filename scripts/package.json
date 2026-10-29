@@ -1,0 +1,11 @@
+{
+  "name": "ifdb-plugin-scripts",
+  "private": true,
+  "description": "Release tooling for the IFDB Jellyfin plugin",
+  "scripts": {
+    "test": "node --test"
+  },
+  "dependencies": {
+    "yaml": "^2.6.0"
+  }
+}
