@@ -19,7 +19,7 @@ public class IfdbParserTests
 
         var first = results[0];
         Assert.Equal("m4s-the-hobbit-book-edit", first.Id);
-        Assert.Equal("M4’s The Hobbit Book Edit", first.Title);
+        Assert.Equal("M4\u2019s The Hobbit Book Edit", first.Title);
         Assert.Equal(2015, first.Year);
         Assert.Equal("https://fanedit.org/wp-content/uploads/2024/05/hobbit-thumb-150x220.jpg", first.ImageUrl);
         Assert.Equal("The whole trilogy cut down to one film.", first.Overview);
@@ -62,7 +62,7 @@ public class IfdbParserTests
 
         Assert.NotNull(entry);
         Assert.Equal("m4s-the-hobbit-book-edit", entry.Id);
-        Assert.Equal("M4’s The Hobbit Book Edit", entry.Title);
+        Assert.Equal("M4\u2019s The Hobbit Book Edit", entry.Title);
 
         // The sidebar's "Someone Else" is outside #primary and must not be picked up.
         Assert.Equal(new[] { "M4" }, entry.Faneditors);

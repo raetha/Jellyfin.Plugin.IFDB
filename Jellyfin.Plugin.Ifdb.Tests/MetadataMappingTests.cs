@@ -22,7 +22,7 @@ public class MetadataMappingTests
     {
         var movie = IfdbMetadataMapper.ToMovie(Entry(), new PluginConfiguration());
 
-        Assert.Equal("M4’s The Hobbit Book Edit", movie.Name);
+        Assert.Equal("M4\u2019s The Hobbit Book Edit", movie.Name);
         Assert.StartsWith("The Hobbit: An Unexpected Journey, ", movie.OriginalTitle, StringComparison.Ordinal);
         Assert.Equal(2015, movie.ProductionYear);
         Assert.Equal(TimeSpan.FromMinutes(245).Ticks, movie.RunTimeTicks);
@@ -61,8 +61,9 @@ public class MetadataMappingTests
         Assert.Equal("A tighter, book-faithful Hobbit in one sitting.", without);
         Assert.NotNull(with);
         Assert.StartsWith(without!, with, StringComparison.Ordinal);
-        Assert.Contains("\n\nEditing Details:\nRemoved Legolas", with, StringComparison.Ordinal);
-        Assert.Contains("\n\nCuts and Additions:\nTrimmed the barrel chase.", with, StringComparison.Ordinal);
+        // Markdown (the web client) needs "two spaces + newline" for a line break; paragraphs are blank-line separated.
+        Assert.Contains("\n\nEditing Details:  \nRemoved Legolas  \nRemoved Tauriel & Alfrid", with, StringComparison.Ordinal);
+        Assert.Contains("\n\nCuts and Additions:  \nTrimmed the barrel chase.\n\nRemoved the Dol Guldur subplot.", with, StringComparison.Ordinal);
     }
 
     [Fact]
