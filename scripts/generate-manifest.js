@@ -8,7 +8,8 @@
 //   SOURCE_URL      download URL of the plugin zip
 //   CHECKSUM        MD5 of the zip (hex)
 //   CHANGELOG       optional; defaults to build.yaml's changelog
-//   REPLACE_VERSIONS optional; "1" makes this build the only version listed (for the rolling dev manifest)
+//   REPLACE         optional; "dev" drops earlier development builds (versions starting "0."),
+//                   "all" makes this build the only version listed
 //   TIMESTAMP       optional; ISO 8601 time, defaults to now
 "use strict";
 
@@ -23,6 +24,11 @@ function compareVersions(a, b) {
     if (diff !== 0) return diff;
   }
   return 0;
+}
+
+// Development builds are numbered 0.MAJOR.MINOR.RUN, so they always sort below releases.
+function isDevVersion(version) {
+  return version.split(".")[0] === "0";
 }
 
 function updateManifest(manifest, build, release) {
@@ -57,9 +63,10 @@ function updateManifest(manifest, build, release) {
     timestamp: release.timestamp,
   };
 
-  plugin.versions = release.replaceVersions
-    ? [entry]
-    : plugin.versions.filter(v => v.version !== entry.version).concat(entry);
+  const keep = v => v.version !== entry.version
+    && release.replace !== "all"
+    && !(release.replace === "dev" && isDevVersion(v.version));
+  plugin.versions = plugin.versions.filter(keep).concat(entry);
   plugin.versions.sort((a, b) => compareVersions(b.version, a.version));
 
   return manifest;
@@ -80,7 +87,7 @@ function main(env) {
     sourceUrl: env.SOURCE_URL,
     checksum: env.CHECKSUM.trim().split(/\s+/)[0],
     changelog: env.CHANGELOG,
-    replaceVersions: env.REPLACE_VERSIONS === "1",
+    replace: env.REPLACE || "",
     timestamp: env.TIMESTAMP || new Date().toISOString(),
   });
 
@@ -88,7 +95,7 @@ function main(env) {
   console.log(`Added version ${env.VERSION} to ${env.MANIFEST_PATH}`);
 }
 
-module.exports = { compareVersions, updateManifest };
+module.exports = { compareVersions, isDevVersion, updateManifest };
 
 if (require.main === module) {
   try {

@@ -14,11 +14,5 @@ owner: "raetha"
 artifacts:
 - "Jellyfin.Plugin.Ifdb.dll"
 - "HtmlAgilityPack.dll"
-changelog: >
-  Final release for Jellyfin 10.11; version 2.x supports Jellyfin 12. Rewritten for the current
-  fanedit.org site, fixing searches that returned nothing (issue #2): requests send a User-Agent,
-  read the current page layout, follow single-result redirects, and log clearly when fanedit.org's
-  bot protection blocks them. Unidentified movies are now matched automatically with fuzzy title
-  scoring. Adds trailers, cover art, backdrops, fanedit type and franchise tags, the Changes
-  section in the overview, an IFDB link, an optional IMDb id, request spacing and caching, and a
-  settings page. Fixes Trusted Reviewer ratings showing as a single-digit critic percentage.
+# The release workflow fills this in from CHANGELOG.md; edit the notes there.
+changelog: "See CHANGELOG.md"

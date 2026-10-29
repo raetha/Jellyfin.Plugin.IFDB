@@ -1,10 +1,13 @@
 name: 'Release'
 
 # Stable: publishing a GitHub release tagged vX.Y.Z (not marked pre-release) builds plugin version
-#   X.Y.Z.0, attaches it to the release and adds it to manifest.json. The tag must match
-#   build.yaml's version, and the release's target branch decides which Jellyfin it's built for.
-# Dev: every push to dev builds X.Y.Z.<run number> from build.yaml's upcoming version, replaces
-#   the rolling "dev-build" pre-release and makes it the only entry in manifest-dev.json.
+#   X.Y.Z.0, sets the release's notes from CHANGELOG.md, attaches the files and adds it to
+#   manifest.json. The tag must match build.yaml's version, and the release's target branch
+#   decides which Jellyfin it's built for.
+# Dev: every push to dev builds 0.MAJOR.MINOR.<run number> towards build.yaml's upcoming version,
+#   replaces the rolling "dev-build" pre-release, and replaces the previous dev build in
+#   manifest.json. Numbered below every release, dev builds are never installed automatically
+#   over a release. manifest-dev.json (the old separate dev repository) mirrors the dev build.
 # Both run the full CI (build, tests, coverage gate) first and publish nothing if it fails.
 
 on:
@@ -63,7 +66,8 @@ jobs:
               echo "::error::Dev builds are only published from the dev branch"
               exit 1
             fi
-            version="${planned%.*}.${GITHUB_RUN_NUMBER}"
+            IFS=. read -r major minor _ <<< "$planned"
+            version="0.${major}.${minor}.${GITHUB_RUN_NUMBER}"
             echo "channel=dev" >> "$GITHUB_OUTPUT"
           fi
 
@@ -103,20 +107,39 @@ jobs:
           name: plugin
           path: dist
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: scripts/package-lock.json
+
+      - name: Release notes from CHANGELOG.md
+        run: |
+          (cd scripts && npm ci --no-audit --no-fund)
+          planned=$(grep -Po '^version:\s*"?\K[0-9.]+' build.yaml)
+          if [ "$CHANNEL" = "stable" ]; then
+            node scripts/changelog.js notes "$VERSION" > "$RUNNER_TEMP/notes.md"
+          else
+            IFS=. read -r _ _ _ build <<< "$VERSION"
+            {
+              echo "Development build ${build} towards ${planned%.*}, from dev (${GITHUB_SHA::7}): $(git log -1 --format=%s)"
+              echo
+              echo "For testing. In Jellyfin's plugin catalog, pick this version for IFDB and turn off automatic updates for the plugin while testing; otherwise Jellyfin moves you back to the newest release."
+              echo
+              node scripts/changelog.js notes "$planned" || true
+            } > "$RUNNER_TEMP/notes.md"
+          fi
+          cat "$RUNNER_TEMP/notes.md"
+
       - name: Attach to the release
         if: env.CHANNEL == 'stable'
-        run: gh release upload "$GITHUB_REF_NAME" dist/* --clobber
+        run: |
+          gh release edit "$GITHUB_REF_NAME" --notes-file "$RUNNER_TEMP/notes.md"
+          gh release upload "$GITHUB_REF_NAME" dist/* --clobber
 
       - name: Replace the dev-build pre-release
         if: env.CHANNEL == 'dev'
         run: |
-          subject=$(git log -1 --format=%s)
-          {
-            echo "Development build ${VERSION} from dev (${GITHUB_SHA::7}): ${subject}"
-            echo
-            echo "For testing only. Install it by adding this plugin repository in Jellyfin:"
-            echo "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/refs/heads/manifest/manifest-dev.json"
-          } > "$RUNNER_TEMP/notes.md"
           gh release delete dev-build --yes --cleanup-tag || true
           gh release create dev-build dist/* \
             --prerelease --latest=false \
@@ -124,26 +147,10 @@ jobs:
             --title "Development build ${VERSION}" \
             --notes-file "$RUNNER_TEMP/notes.md"
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: scripts/package-lock.json
-
-      - name: Update the plugin repository manifest
+      - name: Update the plugin repository manifests
         run: |
-          (cd scripts && npm ci --no-audit --no-fund)
-
-          if [ "$CHANNEL" = "stable" ]; then
-            manifest=manifest.json
-            tag="$GITHUB_REF_NAME"
-            export CHANGELOG=""
-          else
-            manifest=manifest-dev.json
-            tag=dev-build
-            export REPLACE_VERSIONS=1
-            export CHANGELOG="Development build from dev (${GITHUB_SHA::7}): $(git log -1 --format=%s)"
-          fi
+          export CHANGELOG="$(cat "$RUNNER_TEMP/notes.md")"
+          tag=$([ "$CHANNEL" = "stable" ] && echo "$GITHUB_REF_NAME" || echo dev-build)
 
           worktree="$RUNNER_TEMP/manifest"
           if git ls-remote --exit-code --heads origin manifest >/dev/null; then
@@ -154,21 +161,30 @@ jobs:
             git -C "$worktree" rm -rf --quiet .
           fi
 
-          BUILD_YAML="$PWD/build.yaml" \
-          MANIFEST_PATH="$worktree/$manifest" \
-          SOURCE_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${tag}/${ZIP}" \
-          CHECKSUM="$(cat "dist/${ZIP%.zip}.md5")" \
-            node scripts/generate-manifest.js
+          add() {
+            BUILD_YAML="$PWD/build.yaml" \
+            MANIFEST_PATH="$worktree/$1" \
+            REPLACE="$2" \
+            SOURCE_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${tag}/${ZIP}" \
+            CHECKSUM="$(cat "dist/${ZIP%.zip}.md5")" \
+              node scripts/generate-manifest.js
+          }
+          if [ "$CHANNEL" = "stable" ]; then
+            add manifest.json ""
+          else
+            add manifest.json dev
+            add manifest-dev.json all
+          fi
 
           cd "$worktree"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add "$manifest"
+          git add manifest.json manifest-dev.json 2>/dev/null || git add manifest.json
           if git diff --cached --quiet; then
             echo "No manifest changes."
             exit 0
           fi
-          git commit -m "Add ${VERSION} to ${manifest}"
+          git commit -m "Add ${VERSION} to the plugin repository"
           for attempt in 1 2 3; do
             git push origin HEAD:manifest && exit 0
             git fetch origin manifest && git rebase origin/manifest
