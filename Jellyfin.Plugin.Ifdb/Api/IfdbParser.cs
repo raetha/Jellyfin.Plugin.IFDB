@@ -458,7 +458,7 @@ internal static partial class IfdbParser
             lines.RemoveAt(lines.Count - 1);
         }
 
-        return string.Join('\n', lines);
+        return ScrapedText.Clean(string.Join('\n', lines), ScrapedText.MaxOverviewLength);
     }
 
     private static string CleanText(string? text)
@@ -469,7 +469,7 @@ internal static partial class IfdbParser
         }
 
         var decoded = HtmlEntity.DeEntitize(text);
-        return WhitespaceRegex().Replace(decoded, " ").Trim();
+        return ScrapedText.Clean(WhitespaceRegex().Replace(decoded, " "), ScrapedText.MaxValueLength);
     }
 
     private static string? NullIfEmpty(string? text) => string.IsNullOrWhiteSpace(text) ? null : text;

@@ -6,9 +6,9 @@ namespace Jellyfin.Plugin.Ifdb.Tests;
 public class TitleScorerTests
 {
     [Theory]
-    [InlineData("M4's The Hobbit Book Edit", "M4’s The Hobbit Book Edit")]
+    [InlineData("M4's The Hobbit Book Edit", "M4\u2019s The Hobbit Book Edit")]
     [InlineData("Star Wars Episode I", "Star Wars: Episode I")]
-    [InlineData("Amelie", "Amélie")]
+    [InlineData("Amelie", "Am\u00E9lie")]
     public void PunctuationCaseAndAccentsDontMatter(string query, string candidate)
         => Assert.Equal(100, TitleScorer.Score(query, candidate));
 

@@ -94,6 +94,11 @@ internal static class IfdbMetadataMapper
     /// <summary>
     /// Builds the overview: the synopsis, then (optionally) each labelled section of the Changes tab.
     /// </summary>
+    /// <remarks>
+    /// Jellyfin's web client renders overviews as Markdown, where a single line break is just a space.
+    /// Lines within a paragraph therefore end with Markdown's two-space line break (invisible in clients
+    /// that show plain text), and paragraphs are separated by a blank line.
+    /// </remarks>
     /// <param name="entry">The fanedit.</param>
     /// <param name="config">The plugin configuration.</param>
     /// <returns>The overview, or <c>null</c> when there's nothing to show.</returns>
@@ -110,7 +115,15 @@ internal static class IfdbMetadataMapper
             parts.AddRange(entry.Changes.Select(c => c.Label.Length > 0 ? c.Label + ":\n" + c.Text : c.Text));
         }
 
-        return parts.Count > 0 ? string.Join("\n\n", parts) : null;
+        if (parts.Count == 0)
+        {
+            return null;
+        }
+
+        var paragraphs = string.Join("\n\n", parts)
+            .Split("\n\n", StringSplitOptions.RemoveEmptyEntries)
+            .Select(p => string.Join("  \n", p.Split('\n', StringSplitOptions.RemoveEmptyEntries)));
+        return ScrapedText.Clean(string.Join("\n\n", paragraphs), ScrapedText.MaxOverviewLength);
     }
 
     public static RemoteSearchResult ToRemoteSearchResult(IfdbSearchResult result)

@@ -28,6 +28,23 @@ internal sealed class FakeHttpHandler : HttpMessageHandler
             uri => uri.AbsoluteUri.Contains(urlPart, StringComparison.Ordinal),
             (request, _) => Task.FromResult(Response(request, html, status, finalUrl, header)));
 
+    /// <summary>
+    /// Answers requests whose URL contains <paramref name="urlPart"/> with raw bytes.
+    /// </summary>
+    public FakeHttpHandler Bytes(string urlPart, byte[] body, string? contentType = null, HttpStatusCode status = HttpStatusCode.OK)
+        => Route(
+            uri => uri.AbsoluteUri.Contains(urlPart, StringComparison.Ordinal),
+            (request, _) =>
+            {
+                var content = new ByteArrayContent(body);
+                if (contentType is not null)
+                {
+                    content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(contentType);
+                }
+
+                return Task.FromResult(new HttpResponseMessage(status) { Content = content, RequestMessage = request });
+            });
+
     public FakeHttpHandler Route(Func<Uri, bool> match, Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> respond)
     {
         _routes.Add((match, respond));

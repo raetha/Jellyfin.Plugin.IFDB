@@ -51,7 +51,7 @@ public class ProviderTests
         var results = (await provider.GetSearchResults(WithId(EntryUrl), CancellationToken.None)).ToList();
 
         var result = Assert.Single(results);
-        Assert.Equal("M4’s The Hobbit Book Edit", result.Name);
+        Assert.Equal("M4\u2019s The Hobbit Book Edit", result.Name);
         Assert.Equal("m4s-the-hobbit-book-edit", result.GetProviderId(Constants.ProviderIdKey));
         Assert.Equal(Constants.PluginName, result.SearchProviderName);
     }
@@ -135,7 +135,7 @@ public class ProviderTests
 
         Assert.True(result.HasMetadata);
         Assert.Equal("en", result.ResultLanguage);
-        Assert.Equal("M4’s The Hobbit Book Edit", result.Item.Name);
+        Assert.Equal("M4\u2019s The Hobbit Book Edit", result.Item.Name);
         var person = Assert.Single(result.People);
         Assert.Equal("M4", person.Name);
         Assert.Equal(PersonKind.Director, person.Type);
@@ -162,7 +162,7 @@ public class ProviderTests
         t.Handler.Html("keywords=M4%E2%80%99s%20The%20Hobbit%20Book%20Edit&", Fixture.Read("search.html"));
         t.Handler.Html(EntryUrl, Fixture.Read("entry.html"));
 
-        var result = await provider.GetMetadata(new MovieInfo { Name = "M4’s The Hobbit Book Edit (2015)" }, CancellationToken.None);
+        var result = await provider.GetMetadata(new MovieInfo { Name = "M4\u2019s The Hobbit Book Edit (2015)" }, CancellationToken.None);
 
         Assert.True(result.HasMetadata);
         Assert.Equal("m4s-the-hobbit-book-edit", result.Item.GetProviderId(Constants.ProviderIdKey));
@@ -222,7 +222,7 @@ public class ProviderTests
     {
         var (t, provider) = MovieProvider();
         using var _ = t;
-        t.Handler.Html("poster.jpg", "bytes");
+        t.Handler.Bytes("poster.jpg", TestImages.Png, "image/png");
         var images = new IfdbMovieImageProvider(t.Client);
 
         using var fromMovie = await provider.GetImageResponse("https://fanedit.org/poster.jpg", CancellationToken.None);

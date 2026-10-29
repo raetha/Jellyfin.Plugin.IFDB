@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -28,6 +29,9 @@ internal sealed class IfdbClient
 
     // fanedit.org pages are around 150 KB; anything far bigger isn't a page we want.
     private const int MaxPageBytes = 5 * 1024 * 1024;
+
+    // Posters and cover art are rarely over a few MB.
+    private const int MaxImageBytes = 20 * 1024 * 1024;
 
     private static readonly TimeSpan BlockedWarningInterval = TimeSpan.FromMinutes(15);
 
@@ -171,21 +175,54 @@ internal sealed class IfdbClient
     }
 
     /// <summary>
-    /// Downloads an image, sending the same identifying headers as page requests.
+    /// Downloads an image for Jellyfin to save. Only a real JPEG, PNG, GIF or WebP file of at most
+    /// 20 MB is passed on, labelled with the type its content shows rather than what the server
+    /// claimed. Anything else comes back as 404, which makes Jellyfin skip to the next image.
     /// </summary>
     /// <param name="url">The image URL.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>The response.</returns>
     /// <exception cref="ArgumentException">The URL isn't an http(s) address on a public host.</exception>
-    public Task<HttpResponseMessage> GetImageResponseAsync(string url, CancellationToken cancellationToken)
+    public async Task<HttpResponseMessage> GetImageResponseAsync(string url, CancellationToken cancellationToken)
     {
         if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || !IfdbUrls.IsPublicWebUrl(uri))
         {
             throw new ArgumentException("Only http(s) images on public hosts are downloaded: " + url, nameof(url));
         }
 
-        var request = CreateRequest(url, ImageAccept);
-        return _httpClientFactory.CreateClient(NamedClient.Default).SendAsync(request, cancellationToken);
+        using var request = CreateRequest(url, ImageAccept);
+        using var response = await _httpClientFactory.CreateClient(NamedClient.Default)
+            .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken)
+            .ConfigureAwait(false);
+        if (!response.IsSuccessStatusCode)
+        {
+            return new HttpResponseMessage(response.StatusCode) { RequestMessage = new HttpRequestMessage(HttpMethod.Get, uri) };
+        }
+
+        byte[] bytes;
+        string? mediaType;
+        try
+        {
+            bytes = await ReadLimitedAsync(response.Content, MaxImageBytes, "image", url, cancellationToken).ConfigureAwait(false);
+            mediaType = ImageSniffer.DetectMediaType(bytes);
+        }
+        catch (HttpRequestException ex)
+        {
+            return RejectImage(uri, ex.Message);
+        }
+
+        if (mediaType is null)
+        {
+            return RejectImage(uri, "not a JPEG, PNG, GIF or WebP image (sent as " + response.Content.Headers.ContentType?.MediaType + ")");
+        }
+
+        var content = new ByteArrayContent(bytes);
+        content.Headers.ContentType = new MediaTypeHeaderValue(mediaType);
+        return new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = content,
+            RequestMessage = new HttpRequestMessage(HttpMethod.Get, response.RequestMessage!.RequestUri),
+        };
     }
 
     /// <summary>
@@ -328,7 +365,8 @@ internal sealed class IfdbClient
             using var response = await _httpClientFactory.CreateClient(NamedClient.Default)
                 .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token)
                 .ConfigureAwait(false);
-            var html = await ReadLimitedAsync(response.Content, url, timeout.Token).ConfigureAwait(false);
+            var bytes = await ReadLimitedAsync(response.Content, MaxPageBytes, "page", url, timeout.Token).ConfigureAwait(false);
+            var html = DecodeText(bytes);
             _state.LastRequest = _time.GetUtcNow();
 
             if (response.Headers.Contains("cf-mitigated") || IfdbParser.IsChallengePage(html))
@@ -345,11 +383,11 @@ internal sealed class IfdbClient
         }
     }
 
-    private static async Task<string> ReadLimitedAsync(HttpContent content, string url, CancellationToken cancellationToken)
+    private static async Task<byte[]> ReadLimitedAsync(HttpContent content, int maxBytes, string what, string url, CancellationToken cancellationToken)
     {
-        if (content.Headers.ContentLength > MaxPageBytes)
+        if (content.Headers.ContentLength > maxBytes)
         {
-            throw new HttpRequestException("fanedit.org page is too large (" + content.Headers.ContentLength + " bytes): " + url);
+            throw new HttpRequestException("fanedit.org " + what + " is too large (" + content.Headers.ContentLength + " bytes): " + url);
         }
 
         var stream = await content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
@@ -360,17 +398,32 @@ internal sealed class IfdbClient
             int read;
             while ((read = await stream.ReadAsync(chunk, cancellationToken).ConfigureAwait(false)) > 0)
             {
-                if (buffer.Length + read > MaxPageBytes)
+                if (buffer.Length + read > maxBytes)
                 {
-                    throw new HttpRequestException("fanedit.org page is larger than " + MaxPageBytes + " bytes: " + url);
+                    throw new HttpRequestException("fanedit.org " + what + " is larger than " + maxBytes + " bytes: " + url);
                 }
 
                 await buffer.WriteAsync(chunk.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
             }
 
-            // fanedit.org serves UTF-8; a byte-order mark, if any, still wins.
-            using var reader = new StreamReader(new MemoryStream(buffer.GetBuffer(), 0, (int)buffer.Length), Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
-            return await reader.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
+            return buffer.ToArray();
         }
+    }
+
+    // fanedit.org serves UTF-8; a byte-order mark, if any, still wins.
+    private static string DecodeText(byte[] bytes)
+    {
+        using var reader = new StreamReader(new MemoryStream(bytes), Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
+        return reader.ReadToEnd();
+    }
+
+    private HttpResponseMessage RejectImage(Uri uri, string reason)
+    {
+        if (_logger.IsEnabled(LogLevel.Warning))
+        {
+            _logger.LogWarning("IFDB: skipped image {Url}: {Reason}", uri, reason);
+        }
+
+        return new HttpResponseMessage(HttpStatusCode.NotFound) { RequestMessage = new HttpRequestMessage(HttpMethod.Get, uri) };
     }
 }

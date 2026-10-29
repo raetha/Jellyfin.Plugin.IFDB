@@ -28,7 +28,10 @@ If you add both repositories, the catalog lists releases and dev builds together
 - Images: the main listing image and cover art. Wide banners become backdrops and thumbs rather than posters
 - Optionally stores the original film's IMDb id
 - Polite to fanedit.org: identifies itself, spaces out requests and caches pages
-- Careful with what it scrapes: pages are size-limited, images are only downloaded from http(s) addresses on public hosts (never IP addresses or local-network names), and trailers are always plain YouTube links
+- Careful with what it scrapes:
+  - Images are only downloaded from http(s) addresses on public hosts (never IP addresses or local-network names), must really be JPEG, PNG, GIF or WebP files (checked by content, so an SVG or web page can't pose as one), and are limited to 20 MB
+  - Text has control characters, hidden text-direction characters and HTML tags removed, and is length-limited; pages are limited to 5 MB
+  - Trailers are always plain YouTube links
 
 ### ⚙️ Settings
 Dashboard → Plugins → IFDB:

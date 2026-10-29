@@ -347,11 +347,12 @@ public class IfdbClientTests
     public async Task ImageRequestsSendIdentifyingHeaders()
     {
         using var t = new TestClient();
-        t.Handler.Html("cover.jpg", "image-bytes");
+        t.Handler.Bytes("cover.jpg", TestImages.Jpeg, "image/jpeg");
 
         using var response = await t.Client.GetImageResponseAsync("https://fanedit.org/cover.jpg", CancellationToken.None);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(TestImages.Jpeg, await response.Content.ReadAsByteArrayAsync());
         var request = Assert.Single(t.Handler.Requests);
         Assert.StartsWith("Jellyfin-IFDB/", request.Headers.UserAgent.ToString(), StringComparison.Ordinal);
         Assert.Contains("image/", request.Headers.Accept.ToString(), StringComparison.Ordinal);
