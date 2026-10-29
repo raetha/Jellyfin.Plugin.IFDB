@@ -1,0 +1,139 @@
+name: '🧪 Publish Dev Build'
+
+# Every push to dev that passes the tests is built and published as the rolling "dev"
+# pre-release, and listed in manifest-dev.json on the manifest branch. Add
+# https://raw.githubusercontent.com/raetha/Jellyfin.Plugin.IFDB/refs/heads/manifest/manifest-dev.json
+# as a plugin repository in Jellyfin to get these builds.
+#
+# Dev builds are versioned from build.yaml's version with the last part set to
+# 1000 + the run number (2.10.11.0 -> 2.10.11.1042), so each build is newer than the
+# last and newer than the stable release it leads up to.
+
+on:
+  push:
+    branches:
+      - dev
+    paths-ignore:
+      - '**/*.md'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-dev
+  cancel-in-progress: false
+
+jobs:
+  test:
+    uses: jellyfin/jellyfin-meta-plugins/.github/workflows/test.yaml@master
+    with:
+      dotnet-version: '9.0.x'
+
+  publish:
+    needs: test
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      RELEASE_TAG: dev-build
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Work out the dev version
+        id: version
+        run: |
+          base=$(grep -Po '^version:\s*"?\K[0-9.]+' build.yaml)
+          version="${base%.*}.$((1000 + GITHUB_RUN_NUMBER))"
+          subject=$(git log -1 --format=%s)
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          {
+            echo "changelog<<CHANGELOG_EOF"
+            echo "Development build from dev (${GITHUB_SHA::7}): ${subject}"
+            echo "CHANGELOG_EOF"
+          } >> "$GITHUB_OUTPUT"
+          echo "Dev version: ${version}"
+
+      - name: Build plugin
+        id: jprm
+        uses: oddstr13/jellyfin-plugin-repository-manager@9497a0a499416cc572ed2e07a391d9f943a37b4d # v1.1.1
+        with:
+          version: ${{ steps.version.outputs.version }}
+          dotnet-target: 'net9.0'
+
+      - name: Checksums
+        id: files
+        run: |
+          zip=$(realpath "${{ steps.jprm.outputs.artifact }}")
+          md5sum "$zip" | cut -d' ' -f1 > "${zip%.*}.md5"
+          sha256sum "$zip" | cut -d' ' -f1 > "${zip%.*}.sha256"
+          echo "zip=${zip}" >> "$GITHUB_OUTPUT"
+          echo "md5=${zip%.*}.md5" >> "$GITHUB_OUTPUT"
+          echo "sha256=${zip%.*}.sha256" >> "$GITHUB_OUTPUT"
+          echo "name=$(basename "$zip")" >> "$GITHUB_OUTPUT"
+
+      - name: Replace the dev pre-release
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          CHANGELOG: ${{ steps.version.outputs.changelog }}
+          ZIP: ${{ steps.files.outputs.zip }}
+          MD5: ${{ steps.files.outputs.md5 }}
+          SHA256: ${{ steps.files.outputs.sha256 }}
+        run: |
+          notes="$RUNNER_TEMP/notes.md"
+          {
+            echo "$CHANGELOG"
+            echo
+            echo "Automatic build of the dev branch. Install it by adding this plugin repository in Jellyfin:"
+            echo "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/refs/heads/manifest/manifest-dev.json"
+          } > "$notes"
+          gh release delete "$RELEASE_TAG" --yes --cleanup-tag || true
+          gh release create "$RELEASE_TAG" \
+            --prerelease \
+            --target "$GITHUB_SHA" \
+            --title "Development build ${VERSION}" \
+            --notes-file "$notes" \
+            "$ZIP" "$MD5" "$SHA256"
+
+      - name: Update manifest-dev.json
+        env:
+          RELEASE_URL: https://github.com/${{ github.repository }}/releases/download/dev-build/${{ steps.files.outputs.name }}
+          VERSION_OVERRIDE: ${{ steps.version.outputs.version }}
+          CHANGELOG_OVERRIDE: ${{ steps.version.outputs.changelog }}
+          ZIP: ${{ steps.files.outputs.zip }}
+          MD5: ${{ steps.files.outputs.md5 }}
+        run: |
+          workdir="$RUNNER_TEMP/manifest"
+          src="$PWD"
+          if git ls-remote --exit-code --heads origin manifest >/dev/null; then
+            git worktree add "$workdir" origin/manifest
+          else
+            git worktree add --detach "$workdir"
+            git -C "$workdir" checkout --orphan manifest
+            git -C "$workdir" rm -rf --quiet .
+          fi
+          cd "$workdir"
+          # The script and its yaml dependency run from here; none of it is committed.
+          cp "$src/build.yaml" "$src/scripts/generate-manifest.js" .
+          npm install --no-save --no-package-lock yaml >/dev/null
+          RELEASE_TAG="$VERSION_OVERRIDE" \
+          RELEASE_PACKAGE_PATH="$ZIP" \
+          RELEASE_MD5="$MD5" \
+          MANIFEST_PATH=manifest-dev.json \
+          KEEP_VERSIONS=1 \
+            node generate-manifest.js
+          rm -rf build.yaml generate-manifest.js node_modules package.json
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add manifest-dev.json
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+          else
+            git commit -m "Update manifest-dev.json for dev build ${VERSION_OVERRIDE}"
+            git push origin HEAD:manifest
+          fi

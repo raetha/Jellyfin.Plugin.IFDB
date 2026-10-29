@@ -4,11 +4,13 @@ on:
   push:
     branches:
       - main
+      - dev
     paths-ignore:
       - '**/*.md'
   pull_request:
     branches:
       - main
+      - dev
     paths-ignore:
       - '**/*.md'
   workflow_dispatch:
@@ -16,3 +18,6 @@ on:
 jobs:
   call:
     uses: jellyfin/jellyfin-meta-plugins/.github/workflows/build.yaml@master
+    with:
+      dotnet-version: '9.0.x'
+      dotnet-target: 'net9.0'

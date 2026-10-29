@@ -8,6 +8,11 @@ const releaseTag = process.env.RELEASE_TAG;
 const releaseUrl = process.env.RELEASE_URL; 
 const releasePackagePath = process.env.RELEASE_PACKAGE_PATH; 
 const releaseMd5Path = process.env.RELEASE_MD5; // optional MD5 file from Publish Plugin workflow
+// Optional overrides, used for development builds from the dev branch
+const manifestPath = process.env.MANIFEST_PATH || "manifest.json";
+const versionOverride = process.env.VERSION_OVERRIDE;
+const changelogOverride = process.env.CHANGELOG_OVERRIDE;
+const keepVersions = parseInt(process.env.KEEP_VERSIONS || "0", 10); // 0 keeps every version
 
 if (!releaseTag || !releaseUrl || !releasePackagePath) {
   console.error("RELEASE_TAG, RELEASE_URL, and RELEASE_PACKAGE_PATH must be provided");
@@ -20,7 +25,8 @@ const data = YAML.parse(fs.readFileSync("build.yaml", "utf8"));
 // Determine checksum
 let checksum;
 if (releaseMd5Path && fs.existsSync(releaseMd5Path)) {
-  checksum = fs.readFileSync(releaseMd5Path, "utf8").trim();
+  // md5sum output is "<hash>  <file>"; the manifest wants just the hash
+  checksum = fs.readFileSync(releaseMd5Path, "utf8").trim().split(/\s+/)[0];
 } else if (fs.existsSync(releasePackagePath)) {
   const packageBuffer = fs.readFileSync(releasePackagePath);
   checksum = crypto.createHash("md5").update(packageBuffer).digest("hex");
@@ -32,8 +38,7 @@ if (releaseMd5Path && fs.existsSync(releaseMd5Path)) {
 // Timestamp in ISO 8601 UTC format
 const timestamp = new Date().toISOString();
 
-// Load existing manifest.json if it exists
-const manifestPath = "manifest.json";
+// Load existing manifest if it exists
 let manifest = [];
 if (fs.existsSync(manifestPath)) {
   manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
@@ -55,9 +60,10 @@ if (!plugin) {
 }
 
 // Create new version object
+const version = versionOverride || data.version;
 const versionData = {
-  version: data.version,
-  changelog: data.changelog || "",
+  version: version,
+  changelog: changelogOverride || data.changelog || "",
   targetAbi: data.targetAbi || "",
   sourceUrl: releaseUrl,
   checksum: checksum,
@@ -65,13 +71,17 @@ const versionData = {
 };
 
 // Update existing version or prepend new
-const existingVersion = plugin.versions.find(v => v.version === data.version);
+const existingVersion = plugin.versions.find(v => v.version === version);
 if (existingVersion) {
   Object.assign(existingVersion, versionData);
 } else {
   plugin.versions.unshift(versionData);
 }
 
-// Write updated manifest.json
+if (keepVersions > 0) {
+  plugin.versions = plugin.versions.slice(0, keepVersions);
+}
+
+// Write updated manifest
 fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 4));
-console.log(`Updated manifest.json with version ${data.version}`);
+console.log(`Updated ${manifestPath} with version ${version}`);
