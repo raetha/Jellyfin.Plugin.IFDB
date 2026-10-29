@@ -8,12 +8,12 @@
         "category": "Metadata",
         "versions": [
             {
-                "version": "2.0.0.2",
-                "changelog": "Development build from dev (dd9c8a6): Remove workflows GitHub disabled for inactivity",
+                "version": "2.0.0.3",
+                "changelog": "Development build from dev (c07c37f): Fix VS Code debug setup left over from the plugin template",
                 "targetAbi": "12.0.0.0",
-                "sourceUrl": "https://github.com/raetha/Jellyfin.Plugin.IFDB/releases/download/dev-build/ifdb_2.0.0.2.zip",
-                "checksum": "dc1c4d947d0881fbe1905b314b497675",
-                "timestamp": "2026-10-29T17:03:36.311Z"
+                "sourceUrl": "https://github.com/raetha/Jellyfin.Plugin.IFDB/releases/download/dev-build/ifdb_2.0.0.3.zip",
+                "checksum": "87365a3f86e6ca27e4b5c739609016a5",
+                "timestamp": "2026-10-29T19:18:38.772Z"
             }
         ]
     }
