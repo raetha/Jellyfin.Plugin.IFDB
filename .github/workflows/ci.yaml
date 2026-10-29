@@ -86,6 +86,11 @@ jobs:
           npm ci --no-audit --no-fund
           npm test
 
+      - name: CHANGELOG.md has notes for this version
+        run: |
+          version=$(grep -Po '^version:\s*"?\K[0-9.]+' build.yaml)
+          node scripts/changelog.js notes "$version" > /dev/null
+
   package:
     name: Package
     needs: test
@@ -105,6 +110,19 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: ${{ steps.plugin.outputs.sdk }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: scripts/package-lock.json
+
+      # The plugin's own changelog (shown by Jellyfin) comes from CHANGELOG.md, not build.yaml.
+      - name: Put the release notes in build.yaml
+        run: |
+          (cd scripts && npm ci --no-audit --no-fund)
+          version=$(grep -Po '^version:\s*"?\K[0-9.]+' build.yaml)
+          node scripts/changelog.js build-yaml "$version" build.yaml
 
       - name: Build plugin package
         id: jprm
