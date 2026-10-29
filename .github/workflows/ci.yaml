@@ -70,7 +70,7 @@ jobs:
       - name: Coverage summary
         if: always() && hashFiles('coverage/coverage.cobertura.xml') != ''
         run: |
-          dotnet tool install --global dotnet-reportgenerator-globaltool >/dev/null
+          dotnet tool install --global dotnet-reportgenerator-globaltool --version 5.5.* >/dev/null
           reportgenerator -reports:coverage/coverage.cobertura.xml -targetdir:coverage/report -reporttypes:MarkdownSummaryGithub >/dev/null
           cat coverage/report/SummaryGithub.md >> "$GITHUB_STEP_SUMMARY"
 

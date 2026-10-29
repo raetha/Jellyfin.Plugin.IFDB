@@ -10,11 +10,14 @@ namespace Jellyfin.Plugin.Ifdb.Api;
 /// </summary>
 /// <remarks>
 /// An IFDB id is the entry's permalink slug, for example "m4s-the-hobbit-book-edit".
-/// Versions before 2.0 stored WordPress post numbers (for example "17071"); those still
-/// resolve, because fanedit.org redirects "/?p=17071" to the entry's permalink.
+/// Version 1.10.11 stored WordPress post numbers (for example "17071"); those still resolve,
+/// because fanedit.org redirects "/?p=17071" to the entry's permalink, and are replaced by the
+/// slug on the item's next refresh.
 /// </remarks>
 internal static class IfdbUrls
 {
+    private static readonly string[] PrivateHostSuffixes = [".localhost", ".local", ".internal", ".lan", ".home.arpa"];
+
     public static string NormalizeBaseUrl(string? baseUrl)
     {
         var value = baseUrl?.Trim();
@@ -99,22 +102,25 @@ internal static class IfdbUrls
     }
 
     /// <summary>
-    /// Gets the IFDB id an entry URL points at.
+    /// Gets the IFDB id an entry URL points at. Entry pages live at "/&lt;slug&gt;/" (or "/ifdb/&lt;slug&gt;/"
+    /// on the older layout); deeper paths such as "/&lt;slug&gt;/reviews/" are pages of that entry.
     /// </summary>
     /// <param name="url">A fanedit.org entry URL.</param>
     /// <returns>The id, or <c>null</c> for URLs that aren't entry pages.</returns>
     public static string? IdFromUrl(Uri url)
     {
-        var path = Uri.UnescapeDataString(url.AbsolutePath).Trim('/');
-        if (path.Length > 0)
+        var segments = Uri.UnescapeDataString(url.AbsolutePath).Split('/', StringSplitOptions.RemoveEmptyEntries);
+        if (segments.Length > 0)
         {
-            if (path.StartsWith("fanedit-search", StringComparison.OrdinalIgnoreCase)
-                || path.StartsWith("wp-", StringComparison.OrdinalIgnoreCase))
+            if (segments[0].StartsWith("fanedit-search", StringComparison.OrdinalIgnoreCase)
+                || segments[0].StartsWith("wp-", StringComparison.OrdinalIgnoreCase))
             {
                 return null;
             }
 
-            return path;
+            return string.Equals(segments[0], "ifdb", StringComparison.OrdinalIgnoreCase) && segments.Length > 1
+                ? segments[0] + "/" + segments[1]
+                : segments[0];
         }
 
         var postNumber = GetQueryValue(url, "p");
@@ -132,6 +138,28 @@ internal static class IfdbUrls
 
     public static bool IsPostNumber(string? value)
         => !string.IsNullOrEmpty(value) && value.All(char.IsAsciiDigit);
+
+    /// <summary>
+    /// Gets a value indicating whether an address is safe for the server to download: http(s) on a
+    /// public host name. Addresses scraped from pages are checked with this so a bad listing can't
+    /// make Jellyfin fetch IP addresses, localhost or local-network names (server-side request forgery).
+    /// </summary>
+    /// <param name="url">The address.</param>
+    /// <returns><c>true</c> if it may be fetched.</returns>
+    public static bool IsPublicWebUrl(Uri url)
+    {
+        if (!url.IsAbsoluteUri
+            || (url.Scheme != Uri.UriSchemeHttps && url.Scheme != Uri.UriSchemeHttp)
+            || url.HostNameType != UriHostNameType.Dns)
+        {
+            return false;
+        }
+
+        var host = url.IdnHost.TrimEnd('.');
+        return host.Contains('.', StringComparison.Ordinal)
+            && !string.Equals(host, "localhost", StringComparison.OrdinalIgnoreCase)
+            && !PrivateHostSuffixes.Any(suffix => host.EndsWith(suffix, StringComparison.OrdinalIgnoreCase));
+    }
 
     /// <summary>
     /// Converts a YouTube embed URL into a normal watch URL, which Jellyfin clients can open.

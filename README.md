@@ -14,18 +14,21 @@ A Jellyfin movie metadata provider for the [Internet Fanedit Database (IFDB)](ht
 | 10.11 | 1.x | Maintenance only, from the `jellyfin-10.11` branch |
 
 #### Development builds
-Every change to the `dev` branch is published as a test build. To try them, add this repository **instead of** the one above:
+Every change to the `dev` branch is published as a test build, listed in a separate repository:
 `https://raw.githubusercontent.com/raetha/Jellyfin.Plugin.IFDB/refs/heads/manifest/manifest-dev.json`
 
-They're kept in a separate repository on purpose: Jellyfin updates plugins to the highest version in any repository you've added, so mixing them would move everyone onto test builds.
+It's separate on purpose. Jellyfin merges every repository you've added into one catalog entry and automatically updates plugins to the highest version it finds, so a dev build (say `2.1.0.57`) would replace the release (`2.0.0.0`) on every server that had both.
+
+If you add both repositories, the catalog lists releases and dev builds together and you can pick either. To go back to a release afterwards, either remove the dev repository first, or turn off **automatic updates** on the IFDB plugin's page; otherwise Jellyfin's plugin update task reinstalls the newest dev build.
 
 ### ✨ Features
 - **Automatic matching** during library scans. A movie is matched only when exactly one IFDB result is a close enough title match (fuzzy scoring that ignores punctuation, accents and word order, and tells "Episode I" from "Episode II")
-- **Identify** lists IFDB results ranked by how well they match. You can also paste an entry's fanedit.org address, or its id (the last part of the address), into the IFDB field
+- **Identify** lists IFDB results ranked by how well they match. You can also paste any fanedit.org address for an entry (including its reviews page), or its id (the part after `fanedit.org/`), into the IFDB field
 - Metadata: title, synopsis, the fanedit's changes (editing details, cuts and additions), fan editor, original film titles, genres, fanedit type and franchise (as tags), fanedit release date, runtime, Trusted Reviewer and user ratings, YouTube trailers, and an IFDB link
 - Images: the main listing image and cover art. Wide banners become backdrops and thumbs rather than posters
 - Optionally stores the original film's IMDb id
 - Polite to fanedit.org: identifies itself, spaces out requests and caches pages
+- Careful with what it scrapes: pages are size-limited, images are only downloaded from http(s) addresses on public hosts (never IP addresses or local-network names), and trailers are always plain YouTube links
 
 ### ⚙️ Settings
 Dashboard → Plugins → IFDB:
@@ -80,7 +83,7 @@ The current Jellyfin major is supported on `main`. When a new Jellyfin major shi
 
 - **CI** (`ci.yaml`): build with analyzers as errors, tests with the coverage gate, release-script tests, packaging. Runs on every push and pull request.
 - **Release** (`release.yaml`): runs CI, then publishes. Dev pushes replace the `dev-build` pre-release and `manifest-dev.json`. Stable releases are attached to their GitHub release and added to `manifest.json`.
-- **Weekly checks** (`compatibility.yaml`): newest Jellyfin packages, and the live fanedit.org tests.
+- **Weekly checks** (`compatibility.yaml`): newest Jellyfin packages, and the live fanedit.org tests. The live tests also run on every push to `dev`. Scheduled and manual runs only work once the file is on `main`.
 - Code scanning uses GitHub's default CodeQL setup (repository settings); Dependabot runs weekly against `dev`.
 
 ### Releasing

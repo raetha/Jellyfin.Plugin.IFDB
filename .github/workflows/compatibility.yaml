@@ -1,16 +1,21 @@
 name: 'Weekly checks'
 
-# Early warning, run every Monday (and on demand):
+# Early warning, run every Monday and on demand. Scheduled and manual runs only work once this
+# file is on the default branch (main).
 # - newest-jellyfin: builds and tests main and dev against the newest stable Jellyfin packages, so an
 #   API change in a new Jellyfin release shows up before users hit it.
 # - live-site: runs the live tests (known searches and entries) against the real fanedit.org, to
-#   catch layout changes. A failure here can also mean the site's bot protection blocked GitHub.
+#   catch layout changes. Also runs on every push to dev. A failure can also mean the site's bot
+#   protection blocked GitHub's runners; the summary says which.
 # GitHub emails the repository owner when a scheduled run fails.
 
 on:
   schedule:
     - cron: '17 6 * * 1'
   workflow_dispatch:
+  push:
+    branches: [dev]
+    paths: ['Jellyfin.Plugin.Ifdb/**', 'Jellyfin.Plugin.Ifdb.Tests/**', '.github/workflows/compatibility.yaml']
 
 permissions:
   contents: read
@@ -18,6 +23,7 @@ permissions:
 jobs:
   newest-jellyfin:
     name: Newest Jellyfin (${{ matrix.branch }})
+    if: github.event_name != 'push'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -50,7 +56,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: dev
+          ref: ${{ github.event_name == 'push' && github.sha || 'dev' }}
 
       - name: Read build.yaml
         id: plugin

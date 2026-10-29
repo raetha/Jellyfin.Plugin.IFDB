@@ -15,8 +15,9 @@ on:
     paths-ignore: ['**/*.md']
   workflow_dispatch:
 
+# Only the publish job writes (release assets and the manifest branch).
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: release-${{ github.ref }}
@@ -81,6 +82,8 @@ jobs:
     name: Publish ${{ needs.prepare.outputs.channel }} ${{ needs.prepare.outputs.version }}
     needs: [prepare, build]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     # Stable and dev publishing both write to the manifest branch; never at the same time.
     concurrency:
       group: manifest

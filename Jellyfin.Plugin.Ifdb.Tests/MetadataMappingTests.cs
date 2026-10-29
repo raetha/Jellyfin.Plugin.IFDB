@@ -88,7 +88,7 @@ public class MetadataMappingTests
     public void LandscapeOnlyEntryStillGetsAPoster()
     {
         var images = IfdbMetadataMapper.ToRemoteImages(
-            [new IfdbImage { Url = "https://fanedit.org/banner-837x390.jpg", Width = 837, Height = 390, IsMain = true }]);
+            [new IfdbImage { Url = "https://fanedit.org/banner-837x390.jpg", Width = 837, Height = 390 }]);
 
         Assert.Contains(images, i => i.Type == ImageType.Primary);
     }
