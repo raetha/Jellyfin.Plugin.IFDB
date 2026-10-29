@@ -76,6 +76,17 @@ jobs:
           {
             echo "### Live fanedit.org tests"
             grep -E 'Passed!|Failed!' live.log || echo "Build failed; see the log."
-            grep -q 'IfdbBlockedException' live.log && echo "fanedit.org's bot protection blocked the requests." || true
           } >> "$GITHUB_STEP_SUMMARY"
-          grep -q 'Passed!' live.log
+          grep -q 'Passed!' live.log && exit 0
+
+          # Cloudflare often challenges GitHub's datacenter addresses whatever the client sends. That
+          # says nothing about the plugin, so it's a warning; any other failure (layout change,
+          # entry changed) fails the job.
+          failures=$(grep -cE '^\s+Failed Jellyfin' live.log || true)
+          blocked=$(grep -A2 -E '^\s+Failed Jellyfin' live.log | grep -c 'IfdbBlockedException' || true)
+          if [ "$failures" -gt 0 ] && [ "$failures" = "$blocked" ]; then
+            echo "fanedit.org's bot protection blocked GitHub's runner, so the live tests couldn't run." >> "$GITHUB_STEP_SUMMARY"
+            echo "::warning::fanedit.org blocked the GitHub runner (Cloudflare challenge); live tests skipped."
+            exit 0
+          fi
+          exit 1
