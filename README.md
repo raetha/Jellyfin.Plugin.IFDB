@@ -81,7 +81,7 @@ The current Jellyfin major is supported on `main`. When a new Jellyfin major shi
 - **CI** (`ci.yaml`): build with analyzers as errors, tests with the coverage gate, release-script tests, packaging. Runs on every push and pull request.
 - **Release** (`release.yaml`): runs CI, then publishes. Dev pushes replace the `dev-build` pre-release and `manifest-dev.json`. Stable releases are attached to their GitHub release and added to `manifest.json`.
 - **Weekly checks** (`compatibility.yaml`): newest Jellyfin packages, and the live fanedit.org tests.
-- **CodeQL** and Dependabot (weekly, against `dev`).
+- Code scanning uses GitHub's default CodeQL setup (repository settings); Dependabot runs weekly against `dev`.
 
 ### Releasing
 1. On `dev`, set the version in `build.yaml` and `Directory.Build.props` (e.g. `2.1.0.0`) and update the changelog in `build.yaml`.
