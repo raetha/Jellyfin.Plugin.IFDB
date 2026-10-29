@@ -66,7 +66,6 @@ internal static partial class IfdbParser
                 var result = new IfdbSearchResult
                 {
                     Id = id,
-                    Url = url.ToString(),
                     Title = title,
                     Year = ParseDate(FieldText(container, "jrFaneditreleasedate"))?.Year,
                     Overview = NullIfEmpty(FieldText(container, "jrBriefsynopsis")),
@@ -104,7 +103,6 @@ internal static partial class IfdbParser
             results.Add(new IfdbSearchResult
             {
                 Id = id,
-                Url = url?.ToString() ?? string.Empty,
                 Title = title,
                 ImageUrl = Resolve(pageUrl, checkbox.GetAttributeValue("data-thumburl", string.Empty))?.ToString(),
             });
@@ -198,7 +196,10 @@ internal static partial class IfdbParser
             }
         }
 
-        var ratings = root.SelectSingleNode("//div[contains(@class,'jrOverallRatings')]") ?? root;
+        // Sidebars list other fanedits with their own ratings, so prefer the main area's block.
+        var ratings = main.SelectSingleNode(".//div[contains(@class,'jrOverallRatings')]")
+            ?? root.SelectSingleNode("//div[contains(@class,'jrOverallRatings')]")
+            ?? root;
         entry.TrustedReviewerRating = ParseRating(ratings, "jrOverallEditor");
         entry.UserRating = ParseRating(ratings, "jrOverallUser");
 
@@ -222,8 +223,8 @@ internal static partial class IfdbParser
             }
         }
 
-        AddImages(entry, root, pageUrl);
-        AddTrailers(entry, root);
+        AddImages(entry, root, main, pageUrl);
+        AddTrailers(entry, root, main);
         return entry;
     }
 
@@ -273,11 +274,11 @@ internal static partial class IfdbParser
         return match.Success && int.TryParse(match.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value) ? value : null;
     }
 
-    private static void AddImages(IfdbEntry entry, HtmlNode root, Uri pageUrl)
+    private static void AddImages(IfdbEntry entry, HtmlNode root, HtmlNode main, Uri pageUrl)
     {
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        void Add(string? url, HtmlNode? img, bool isMain)
+        void Add(string? url, HtmlNode? img)
         {
             var resolved = Resolve(pageUrl, url)?.ToString();
             if (resolved is null || !seen.Add(resolved))
@@ -285,7 +286,7 @@ internal static partial class IfdbParser
                 return;
             }
 
-            var image = new IfdbImage { Url = resolved, IsMain = isMain };
+            var image = new IfdbImage { Url = resolved };
             var width = img?.GetAttributeValue("width", 0) ?? 0;
             var height = img?.GetAttributeValue("height", 0) ?? 0;
 
@@ -310,15 +311,15 @@ internal static partial class IfdbParser
         }
 
         // Main listing image: the link goes to the full-size file; the <img> is a lazy-loaded thumbnail.
-        var mainLink = root.SelectSingleNode("//div[contains(@class,'jrListingMainImage')]//a[@href]");
-        var mainImg = root.SelectSingleNode("//div[contains(@class,'jrListingMainImage')]//img");
+        var mainLink = main.SelectSingleNode(".//div[contains(@class,'jrListingMainImage')]//a[@href]");
+        var mainImg = main.SelectSingleNode(".//div[contains(@class,'jrListingMainImage')]//img");
         var mainUrl = mainLink?.GetAttributeValue("href", string.Empty);
         if (!IsImageUrl(mainUrl))
         {
             mainUrl = ImageSource(mainImg);
         }
 
-        Add(mainUrl, mainImg, true);
+        Add(mainUrl, mainImg);
 
         // Photo gallery tab (cover art and similar).
         var galleryLinks = root.SelectNodes("//div[@id='photoTab']//a[img]");
@@ -328,26 +329,28 @@ internal static partial class IfdbParser
             {
                 var href = link.GetAttributeValue("href", string.Empty);
                 var img = link.SelectSingleNode(".//img");
-                Add(IsImageUrl(href) ? href : ImageSource(img), img, false);
+                Add(IsImageUrl(href) ? href : ImageSource(img), img);
             }
         }
 
         // Some entries have a cover-art field instead of a gallery.
-        var coverImages = root.SelectNodes("//div[contains(@class,'jrCoverart')]//div[contains(@class,'jrFieldValue')]//img");
+        var coverImages = main.SelectNodes(".//div[contains(@class,'jrCoverart')]//div[contains(@class,'jrFieldValue')]//img");
         if (coverImages is not null)
         {
             foreach (var img in coverImages)
             {
                 var parentLink = img.ParentNode.Name == "a" ? img.ParentNode.GetAttributeValue("href", string.Empty) : null;
-                Add(IsImageUrl(parentLink) ? parentLink : ImageSource(img), img, false);
+                Add(IsImageUrl(parentLink) ? parentLink : ImageSource(img), img);
             }
         }
     }
 
-    private static void AddTrailers(IfdbEntry entry, HtmlNode root)
+    private static void AddTrailers(IfdbEntry entry, HtmlNode root, HtmlNode main)
     {
+        // The Video tab, else YouTube embeds in the main area only: site-wide embeds in sidebars
+        // or footers would otherwise be attached to every entry as a trailer.
         var frames = root.SelectNodes("//div[@id='video']//iframe")
-            ?? root.SelectNodes("//iframe[contains(@src,'youtube') or contains(@data-src,'youtube')]");
+            ?? main.SelectNodes(".//iframe[contains(@src,'youtube') or contains(@data-src,'youtube')]");
         if (frames is null)
         {
             return;
@@ -502,14 +505,10 @@ internal static partial class IfdbParser
         }
 
         var value = HtmlEntity.DeEntitize(url.Trim());
-        if (value.StartsWith("data:", StringComparison.OrdinalIgnoreCase)
-            || value.StartsWith("javascript:", StringComparison.OrdinalIgnoreCase)
-            || value.StartsWith('#'))
-        {
-            return null;
-        }
 
-        return Uri.TryCreate(baseUrl, value, out var resolved) ? resolved : null;
+        // Jellyfin downloads these addresses from the server, so anything scraped is limited to
+        // http(s) on a public host name; see IfdbUrls.IsPublicWebUrl.
+        return Uri.TryCreate(baseUrl, value, out var resolved) && IfdbUrls.IsPublicWebUrl(resolved) ? resolved : null;
     }
 
     private static HtmlDocument Load(string html)

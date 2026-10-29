@@ -66,7 +66,6 @@ public sealed class LiveSiteTests : IDisposable
         {
             Assert.False(string.IsNullOrWhiteSpace(r.Id));
             Assert.False(string.IsNullOrWhiteSpace(r.Title));
-            Assert.StartsWith("https://", r.Url, StringComparison.Ordinal);
         });
     }
 

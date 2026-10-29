@@ -87,7 +87,6 @@ public class ParserEdgeTests
             images.Select(i => i.Url));
 
         // The main image's own width/height attributes describe it, so they're trusted.
-        Assert.True(images[0].IsMain);
         Assert.Equal(400, images[0].Width);
         Assert.Equal(600, images[0].Height);
         Assert.False(images[0].IsLandscape);
@@ -95,7 +94,7 @@ public class ParserEdgeTests
     }
 
     [Fact]
-    public void TrailersAreFoundOutsideTheVideoTabAndDeduplicated()
+    public void TrailersOutsideTheVideoTabComeFromTheMainAreaOnly()
         => Assert.Equal(
             new[] { "https://www.youtube.com/watch?v=lazy1", "https://www.youtube.com/watch?v=v2" },
             Edge().TrailerUrls);
@@ -145,7 +144,6 @@ public class ParserEdgeTests
 
         var result = Assert.Single(IfdbParser.ParseSearchResults(Html, SearchUrl));
         Assert.Equal("123", result.Id);
-        Assert.Equal(string.Empty, result.Url);
         Assert.Null(result.ImageUrl);
     }
 
@@ -217,4 +215,23 @@ public class ParserEdgeTests
 
         Assert.Null(IfdbParser.ParseEntry(Html, PageUrl)!.UserRating);
     }
+
+    [Fact]
+    public void SidebarRatingsAndImagesAreIgnored()
+    {
+        var entry = Edge();
+
+        // The sidebar's 7.7 user rating and its image belong to another fanedit.
+        Assert.Null(entry.UserRating);
+        Assert.DoesNotContain(entry.Images, i => i.Url.Contains("other-edit", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void ImagesOnPrivateOrNonWebAddressesAreDropped()
+        => Assert.DoesNotContain(
+            Edge().Images,
+            i => i.Url.Contains("10.0.0.5", StringComparison.Ordinal)
+                || i.Url.Contains("192.168.", StringComparison.Ordinal)
+                || i.Url.StartsWith("file:", StringComparison.Ordinal)
+                || i.Url.Contains("nas.local", StringComparison.Ordinal));
 }

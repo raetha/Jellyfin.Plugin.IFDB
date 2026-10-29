@@ -19,7 +19,6 @@ public class IfdbParserTests
 
         var first = results[0];
         Assert.Equal("m4s-the-hobbit-book-edit", first.Id);
-        Assert.Equal("https://fanedit.org/m4s-the-hobbit-book-edit/", first.Url);
         Assert.Equal("M4’s The Hobbit Book Edit", first.Title);
         Assert.Equal(2015, first.Year);
         Assert.Equal("https://fanedit.org/wp-content/uploads/2024/05/hobbit-thumb-150x220.jpg", first.ImageUrl);
@@ -110,7 +109,6 @@ public class IfdbParserTests
         Assert.Equal(2, entry.Images.Count);
 
         var main = entry.Images[0];
-        Assert.True(main.IsMain);
         Assert.Equal("https://ifdb.fanedit.org/wp-content/uploads/2024/05/Nov-2021-FEOTM-837x390-1.jpg", main.Url);
         Assert.Equal(837, main.Width);
         Assert.Equal(390, main.Height);

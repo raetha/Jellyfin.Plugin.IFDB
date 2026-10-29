@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Plugin.Ifdb.Configuration;
@@ -24,7 +26,13 @@ internal sealed class IfdbClient
     private const string HtmlAccept = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8";
     private const string ImageAccept = "image/avif,image/webp,image/*,*/*;q=0.8";
 
+    // fanedit.org pages are around 150 KB; anything far bigger isn't a page we want.
+    private const int MaxPageBytes = 5 * 1024 * 1024;
+
     private static readonly TimeSpan BlockedWarningInterval = TimeSpan.FromMinutes(15);
+
+    private static readonly string DefaultUserAgent =
+        "Jellyfin-IFDB/" + typeof(IfdbClient).Assembly.GetName().Version!.ToString(3) + " (+" + Constants.ProjectUrl + ")";
 
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger _logger;
@@ -54,13 +62,7 @@ internal sealed class IfdbClient
         get
         {
             var configured = _configuration().UserAgent?.Trim();
-            if (!string.IsNullOrEmpty(configured))
-            {
-                return configured;
-            }
-
-            var version = typeof(IfdbClient).Assembly.GetName().Version!.ToString(3);
-            return "Jellyfin-IFDB/" + version + " (+" + Constants.ProjectUrl + ")";
+            return string.IsNullOrEmpty(configured) ? DefaultUserAgent : configured;
         }
     }
 
@@ -138,7 +140,7 @@ internal sealed class IfdbClient
         cancellationToken.ThrowIfCancellationRequested();
         var url = IfdbUrls.BuildEntryUrl(_configuration().BaseUrl, id);
         var page = await GetPageAsync(url, cancellationToken).ConfigureAwait(false);
-        if (page.StatusCode == HttpStatusCode.NotFound)
+        if (page.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.Gone)
         {
             if (_logger.IsEnabled(LogLevel.Warning))
             {
@@ -174,8 +176,14 @@ internal sealed class IfdbClient
     /// <param name="url">The image URL.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>The response.</returns>
+    /// <exception cref="ArgumentException">The URL isn't an http(s) address on a public host.</exception>
     public Task<HttpResponseMessage> GetImageResponseAsync(string url, CancellationToken cancellationToken)
     {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || !IfdbUrls.IsPublicWebUrl(uri))
+        {
+            throw new ArgumentException("Only http(s) images on public hosts are downloaded: " + url, nameof(url));
+        }
+
         var request = CreateRequest(url, ImageAccept);
         return _httpClientFactory.CreateClient(NamedClient.Default).SendAsync(request, cancellationToken);
     }
@@ -225,7 +233,6 @@ internal sealed class IfdbClient
         => new()
         {
             Id = entry.Id,
-            Url = entry.Url,
             Title = entry.Title,
             Year = entry.ReleaseDate?.Year,
             ImageUrl = entry.PosterUrl,
@@ -252,7 +259,7 @@ internal sealed class IfdbClient
     private async Task<IfdbPage> GetPageAsync(string url, CancellationToken cancellationToken)
     {
         var config = _configuration();
-        var cacheFor = TimeSpan.FromMinutes(Math.Max(0, config.CacheMinutes));
+        var cacheFor = TimeSpan.FromMinutes(Math.Clamp(config.CacheMinutes, 0, 1440));
         var now = _time.GetUtcNow();
 
         if (cacheFor > TimeSpan.Zero && _state.TryGetPage(url, now, out var cached))
@@ -278,8 +285,8 @@ internal sealed class IfdbClient
             throw;
         }
 
-        // Server errors are worth retrying soon, so only pages and 404s stay cached.
-        var cacheable = page.StatusCode == HttpStatusCode.NotFound || (int)page.StatusCode is >= 200 and <= 299;
+        // Server errors are worth retrying soon, so only pages and missing entries stay cached.
+        var cacheable = page.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.Gone || (int)page.StatusCode is >= 200 and <= 299;
         if (!cacheable)
         {
             _state.RemovePage(url);
@@ -298,17 +305,19 @@ internal sealed class IfdbClient
 
     private async Task<IfdbPage> FetchAsync(string url, PluginConfiguration config)
     {
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(Math.Clamp(config.RequestTimeoutSeconds, 1, 300)), _time);
-
-        await _state.RequestGate.WaitAsync(timeout.Token).ConfigureAwait(false);
+        // Waiting in the queue doesn't count toward the timeout: during a big scan the queue can be
+        // long, and the request ahead always finishes or times out, so the wait is bounded.
+        await _state.RequestGate.WaitAsync().ConfigureAwait(false);
         try
         {
             var delay = TimeSpan.FromMilliseconds(Math.Clamp(config.RequestDelayMilliseconds, 0, 60000));
             var wait = _state.LastRequest + delay - _time.GetUtcNow();
             if (wait > TimeSpan.Zero)
             {
-                await Task.Delay(wait, _time, timeout.Token).ConfigureAwait(false);
+                await Task.Delay(wait, _time).ConfigureAwait(false);
             }
+
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(Math.Clamp(config.RequestTimeoutSeconds, 5, 300)), _time);
 
             if (_logger.IsEnabled(LogLevel.Debug))
             {
@@ -317,9 +326,9 @@ internal sealed class IfdbClient
 
             using var request = CreateRequest(url, HtmlAccept);
             using var response = await _httpClientFactory.CreateClient(NamedClient.Default)
-                .SendAsync(request, HttpCompletionOption.ResponseContentRead, timeout.Token)
+                .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token)
                 .ConfigureAwait(false);
-            var html = await response.Content.ReadAsStringAsync(timeout.Token).ConfigureAwait(false);
+            var html = await ReadLimitedAsync(response.Content, url, timeout.Token).ConfigureAwait(false);
             _state.LastRequest = _time.GetUtcNow();
 
             if (response.Headers.Contains("cf-mitigated") || IfdbParser.IsChallengePage(html))
@@ -333,6 +342,35 @@ internal sealed class IfdbClient
         finally
         {
             _state.RequestGate.Release();
+        }
+    }
+
+    private static async Task<string> ReadLimitedAsync(HttpContent content, string url, CancellationToken cancellationToken)
+    {
+        if (content.Headers.ContentLength > MaxPageBytes)
+        {
+            throw new HttpRequestException("fanedit.org page is too large (" + content.Headers.ContentLength + " bytes): " + url);
+        }
+
+        var stream = await content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+        await using (stream.ConfigureAwait(false))
+        {
+            using var buffer = new MemoryStream();
+            var chunk = new byte[81920];
+            int read;
+            while ((read = await stream.ReadAsync(chunk, cancellationToken).ConfigureAwait(false)) > 0)
+            {
+                if (buffer.Length + read > MaxPageBytes)
+                {
+                    throw new HttpRequestException("fanedit.org page is larger than " + MaxPageBytes + " bytes: " + url);
+                }
+
+                await buffer.WriteAsync(chunk.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
+            }
+
+            // fanedit.org serves UTF-8; a byte-order mark, if any, still wins.
+            using var reader = new StreamReader(new MemoryStream(buffer.GetBuffer(), 0, (int)buffer.Length), Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
+            return await reader.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
         }
     }
 }

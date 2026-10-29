@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Threading;
@@ -118,5 +119,136 @@ public class CoverageGapTests
         t.Handler.Html("keywords=Hobbit&", Fixture.Read("search.html"));
 
         Assert.NotEmpty(await provider.GetSearchResults(new MovieInfo { Name = "Hobbit" }, CancellationToken.None));
+    }
+
+    [Theory]
+    [InlineData("https://fanedit.org/x.jpg", true)]
+    [InlineData("http://i.imgur.com/x.jpg", true)]
+    [InlineData("https://fanedit.org./x.jpg", true)]
+    [InlineData("ftp://fanedit.org/x.jpg", false)]
+    [InlineData("file:///etc/passwd", false)]
+    [InlineData("http://192.168.1.10/x.jpg", false)]
+    [InlineData("http://[::1]/x.jpg", false)]
+    [InlineData("http://localhost/x.jpg", false)]
+    [InlineData("http://nas/x.jpg", false)]
+    [InlineData("http://nas.local/x.jpg", false)]
+    [InlineData("http://printer.home.arpa/x.jpg", false)]
+    public void OnlyPublicWebAddressesAreFetched(string url, bool allowed)
+        => Assert.Equal(allowed, IfdbUrls.IsPublicWebUrl(new Uri(url)));
+
+    [Fact]
+    public void RelativeAddressesAreNotPublicWebUrls()
+        => Assert.False(IfdbUrls.IsPublicWebUrl(new Uri("/x.jpg", UriKind.Relative)));
+
+    [Theory]
+    [InlineData("http://192.168.1.10/poster.jpg")]
+    [InlineData("not a url")]
+    public async Task ImageDownloadsToPrivateAddressesAreRefused(string url)
+    {
+        using var t = new TestClient();
+
+        await Assert.ThrowsAsync<ArgumentException>(() => t.Client.GetImageResponseAsync(url, CancellationToken.None));
+        Assert.Equal(0, t.Handler.RequestCount);
+    }
+
+    [Fact]
+    public async Task GoneEntriesAreTreatedAsMissingAndCached()
+    {
+        using var t = new TestClient();
+        t.Handler.Html("removed-edit", "gone", HttpStatusCode.Gone);
+
+        Assert.Null(await t.Client.GetEntryAsync("removed-edit", CancellationToken.None));
+        Assert.Equal(1, t.State.CachedPageCount);
+    }
+
+    [Fact]
+    public async Task OversizedPagesAreRefusedByLength()
+    {
+        using var t = new TestClient();
+        t.Handler.Route(
+            uri => uri.AbsoluteUri.Contains("huge", StringComparison.Ordinal),
+            (request, _) =>
+            {
+                var response = FakeHttpHandler.Response(request, "x");
+                response.Content.Headers.ContentLength = 6 * 1024 * 1024;
+                return Task.FromResult(response);
+            });
+
+        var error = await Assert.ThrowsAsync<HttpRequestException>(() => t.Client.GetEntryAsync("huge", CancellationToken.None));
+        Assert.Contains("too large", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task OversizedPagesAreRefusedWhileReading()
+    {
+        using var t = new TestClient();
+        t.Handler.Route(
+            uri => uri.AbsoluteUri.Contains("huge", StringComparison.Ordinal),
+            (request, _) =>
+            {
+                var response = FakeHttpHandler.Response(request, string.Empty);
+                response.Content = new StreamContent(new UnknownLengthStream(new byte[(5 * 1024 * 1024) + 1]));
+                return Task.FromResult(response);
+            });
+
+        var error = await Assert.ThrowsAsync<HttpRequestException>(() => t.Client.GetEntryAsync("huge", CancellationToken.None));
+        Assert.Contains("larger than", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task PagesWithAByteOrderMarkAreDecoded()
+    {
+        using var t = new TestClient();
+        var html = System.Text.Encoding.UTF8.GetPreamble().Concat(System.Text.Encoding.UTF8.GetBytes(Fixture.Read("entry.html"))).ToArray();
+        t.Handler.Route(
+            uri => uri.AbsoluteUri.Contains("bom-edit", StringComparison.Ordinal),
+            (request, _) =>
+            {
+                var response = FakeHttpHandler.Response(request, string.Empty);
+                response.Content = new ByteArrayContent(html);
+                return Task.FromResult(response);
+            });
+
+        var entry = await t.Client.GetEntryAsync("bom-edit", CancellationToken.None);
+
+        Assert.Equal("M4\u2019s The Hobbit Book Edit", entry!.Title);
+    }
+
+    [Fact]
+    public async Task TimeSpentQueuedDoesntCountTowardTheTimeout()
+    {
+        using var t = new TestClient(new PluginConfiguration { RequestDelayMilliseconds = 0, RequestTimeoutSeconds = 5, CacheMinutes = 0 });
+        var release = new TaskCompletionSource();
+        t.Handler.Route(
+            uri => uri.AbsoluteUri.Contains("slow-edit", StringComparison.Ordinal),
+            async (request, token) =>
+            {
+                await release.Task.WaitAsync(token);
+                return FakeHttpHandler.Response(request, Fixture.Read("entry.html"));
+            });
+        t.Handler.Html("queued-edit", Fixture.Read("entry.html"));
+
+        var slow = t.Client.GetEntryAsync("slow-edit", CancellationToken.None);
+        var queued = t.Client.GetEntryAsync("queued-edit", CancellationToken.None);
+
+        // Four seconds pass with the second request queued behind the first. Together that's more
+        // than the 5 second timeout, but the second request's clock only starts once it's sent.
+        t.Time.Advance(TimeSpan.FromSeconds(4));
+        release.SetResult();
+        Assert.NotNull(await slow);
+
+        t.Time.Advance(TimeSpan.FromSeconds(4));
+        Assert.NotNull(await queued);
+    }
+
+    // A response body whose length isn't known up front, like a chunked download.
+    private sealed class UnknownLengthStream : System.IO.MemoryStream
+    {
+        public UnknownLengthStream(byte[] buffer)
+            : base(buffer)
+        {
+        }
+
+        public override bool CanSeek => false;
     }
 }

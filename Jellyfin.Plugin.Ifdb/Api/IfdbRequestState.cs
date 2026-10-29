@@ -17,7 +17,8 @@ internal sealed class IfdbRequestState : IDisposable
     private long _lastRequestTicks;
     private long _lastBlockedWarningTicks;
 
-    public IfdbRequestState(int maxCachedPages = 500)
+    // Cached pages are raw HTML (~150 KB each), so 100 is roughly 30 MB at most.
+    public IfdbRequestState(int maxCachedPages = 100)
     {
         MaxCachedPages = Math.Max(1, maxCachedPages);
     }

@@ -18,11 +18,6 @@ internal sealed class IfdbImage
     public int? Height { get; set; }
 
     /// <summary>
-    /// Gets or sets a value indicating whether this is the listing's main image.
-    /// </summary>
-    public bool IsMain { get; set; }
-
-    /// <summary>
     /// Gets a value indicating whether the image is clearly wider than it is tall,
     /// so better suited as a backdrop or thumb than a poster.
     /// </summary>

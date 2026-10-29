@@ -7,8 +7,6 @@ internal sealed class IfdbSearchResult
 {
     public string Id { get; set; } = string.Empty;
 
-    public string Url { get; set; } = string.Empty;
-
     public string Title { get; set; } = string.Empty;
 
     public int? Year { get; set; }
