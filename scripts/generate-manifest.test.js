@@ -5,7 +5,7 @@ const assert = require("node:assert/strict");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
-const { compareVersions, isDevVersion, updateManifest } = require("./generate-manifest");
+const { compareVersions, updateManifest } = require("./generate-manifest");
 
 const build = {
   name: "IFDB",
@@ -62,15 +62,12 @@ test("keeps older versions newest first and replaces a rebuilt version", () => {
   assert.equal(versions[0].changelog, "Rebuilt");
 });
 
-test("a dev build replaces earlier dev builds and keeps releases, which stay newest", () => {
-  let manifest = updateManifest([], build, release("1.10.11.0"));
-  manifest = updateManifest(manifest, build, release("2.0.0.0"));
-  manifest = updateManifest(manifest, build, release("0.2.0.6", { replace: "dev" }));
-  manifest = updateManifest(manifest, build, release("0.2.1.7", { replace: "dev" }));
+test("the dev manifest lists only the latest build, even if an older one was numbered higher", () => {
+  let manifest = updateManifest([], build, release("0.2.0.7", { replace: "all" }));
+  manifest = updateManifest(manifest, build, release("2.0.0.9", { replace: "all" }));
+  manifest = updateManifest(manifest, build, release("2.0.0.10", { replace: "all" }));
 
-  assert.deepEqual(manifest[0].versions.map(v => v.version), ["2.0.0.0", "1.10.11.0", "0.2.1.7"]);
-  assert.ok(isDevVersion("0.2.1.7"));
-  assert.ok(!isDevVersion("1.10.11.0"));
+  assert.deepEqual(manifest[0].versions.map(v => v.version), ["2.0.0.10"]);
 });
 
 test("sets the catalog image when there is one", () => {
@@ -93,10 +90,10 @@ test("command line writes the manifest", () => {
   });
 
   run({ VERSION: "2.0.0.0" });
-  run({ VERSION: "0.2.0.1", REPLACE: "dev", CHANGELOG: "Dev build" });
+  run({ VERSION: "1.11.0.0", CHANGELOG: "Older line" });
 
   const written = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
-  assert.deepEqual(written[0].versions.map(v => [v.version, v.changelog]), [["2.0.0.0", "Notes"], ["0.2.0.1", "Dev build"]]);
+  assert.deepEqual(written[0].versions.map(v => [v.version, v.changelog]), [["2.0.0.0", "Notes"], ["1.11.0.0", "Older line"]]);
   assert.equal(written[0].versions[0].checksum, "0123456789abcdef0123456789abcdef");
   assert.throws(() => run({ VERSION: "" }), /Command failed/);
 });

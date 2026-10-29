@@ -2,7 +2,7 @@
 
 All notable changes to the IFDB plugin. Each version's section here becomes its release notes on GitHub and in Jellyfin's plugin catalog.
 
-The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/). Jellyfin shows them with a fourth `.0` (2.0.0 is `2.0.0.0`). Development builds are numbered `0.MAJOR.MINOR.BUILD` (`0.2.0.7` is build 7 towards 2.0), so they never replace a release.
+The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/). Jellyfin shows them with a fourth `.0` (2.0.0 is `2.0.0.0`). Development builds use the fourth number as a build number (`2.0.0.12` is build 12 of the upcoming 2.0.0) and are published in a separate plugin repository.
 
 ## [2.0.0] - Unreleased
 
@@ -27,6 +27,7 @@ Requires Jellyfin 12. Servers still on Jellyfin 10.11 are offered version 1.11.0
 - Fanedits are now identified by their fanedit.org address (for example `m4s-the-hobbit-book-edit`) instead of a number. Items identified by version 1.10.11 keep working and switch over on their next metadata refresh.
 - The plugin is gentler on fanedit.org: one request at a time, a second apart by default, with pages cached for 30 minutes.
 - The overview keeps its line breaks in Jellyfin's web client.
+- The plugin has an image in Jellyfin's catalog and plugin pages.
 
 ### Security
 - Images are only downloaded from public web addresses, must really be JPEG, PNG, GIF or WebP files (checked by their content), and are limited to 20 MB. Anything else, such as an SVG or a web page posing as an image, is skipped.
