@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Adds a plugin build to a Jellyfin plugin repository manifest (manifest.json or manifest-dev.json).
+// Adds a plugin build to the Jellyfin plugin repository manifest (manifest.json).
 //
 // Environment:
 //   BUILD_YAML      path to build.yaml (plugin name, guid, description, targetAbi, changelog)
@@ -8,8 +8,8 @@
 //   SOURCE_URL      download URL of the plugin zip
 //   CHECKSUM        MD5 of the zip (hex)
 //   CHANGELOG       optional; defaults to build.yaml's changelog
-//   REPLACE         optional; "dev" drops earlier development builds (versions starting "0."),
-//                   "all" makes this build the only version listed
+//   REPLACE         optional; "dev" drops earlier development builds (versions starting "0.")
+//   IMAGE_URL       optional; the plugin's catalog image
 //   TIMESTAMP       optional; ISO 8601 time, defaults to now
 "use strict";
 
@@ -53,6 +53,9 @@ function updateManifest(manifest, build, release) {
     owner: build.owner || "",
     category: build.category || "",
   });
+  if (release.imageUrl) {
+    plugin.imageUrl = release.imageUrl;
+  }
 
   const entry = {
     version: release.version,
@@ -64,7 +67,6 @@ function updateManifest(manifest, build, release) {
   };
 
   const keep = v => v.version !== entry.version
-    && release.replace !== "all"
     && !(release.replace === "dev" && isDevVersion(v.version));
   plugin.versions = plugin.versions.filter(keep).concat(entry);
   plugin.versions.sort((a, b) => compareVersions(b.version, a.version));
@@ -88,6 +90,7 @@ function main(env) {
     checksum: env.CHECKSUM.trim().split(/\s+/)[0],
     changelog: env.CHANGELOG,
     replace: env.REPLACE || "",
+    imageUrl: env.IMAGE_URL || "",
     timestamp: env.TIMESTAMP || new Date().toISOString(),
   });
 

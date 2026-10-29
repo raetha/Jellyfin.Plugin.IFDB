@@ -101,7 +101,9 @@ While working, add notes under the upcoming version's heading in `CHANGELOG.md` 
 For a Jellyfin 10.11 fix, do the same on `jellyfin-10.11` and target the release at that branch.
 
 ### Plugin repository files
-The repository manifests Jellyfin reads live on their own `manifest` branch. Every release and dev build updates them, so keeping them off `main` and `dev` avoids a stream of bot commits (and CI runs) on the working branches, avoids merge conflicts between them, and gives both release lines (`main` and `jellyfin-10.11`) one shared manifest. `manifest-dev.json` is the old separate dev repository; it now just mirrors the latest dev build.
+The repository manifest Jellyfin reads (`manifest.json`, plus the catalog image) lives on its own `manifest` branch. Every release and dev build updates it, so keeping it off `main` and `dev` avoids a stream of bot commits (and CI runs) on the working branches, avoids merge conflicts between them, and gives both release lines (`main` and `jellyfin-10.11`) one shared manifest.
+
+The plugin's image is `image.png` in the repository root: it's packaged with the plugin (shown on its page once installed) and copied to the `manifest` branch as the catalog image.
 
 ### 🙏 Credits
 Scraping and title matching are based on [circulon/fanedit-provider](https://github.com/circulon/fanedit-provider) (and its predecessor [IFDB.bundle](https://github.com/circulon/IFDB.bundle)) for Plex.
