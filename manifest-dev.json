@@ -1,0 +1,20 @@
+[
+    {
+        "guid": "0f18c602-5d24-4f88-bb6e-9e59a2efb1cd",
+        "name": "IFDB",
+        "description": "Fetches metadata and images for fanedits from fanedit.org: title, synopsis and changes, fan editor, original film, genres, fanedit type, release date, runtime, ratings, posters, backdrops and trailers. Matches automatically during library scans.\n",
+        "overview": "Movie metadata for fanedits from the Internet Fanedit Database (IFDB)",
+        "owner": "raetha",
+        "category": "Metadata",
+        "versions": [
+            {
+                "version": "2.10.11.1001",
+                "changelog": "Development build from dev (c805a15): Rewrite for the current fanedit.org site (fixes #2)",
+                "targetAbi": "10.11.0.0",
+                "sourceUrl": "https://github.com/raetha/Jellyfin.Plugin.IFDB/releases/download/dev-build/ifdb_2.10.11.1001.zip",
+                "checksum": "495d30ec2affad3276652c218011118f",
+                "timestamp": "2026-10-29T16:00:42.333Z"
+            }
+        ]
+    }
+]
