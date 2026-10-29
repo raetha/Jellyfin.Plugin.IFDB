@@ -369,8 +369,10 @@ public class IfdbClientTests
         t.Time.Advance(TimeSpan.FromMinutes(16));
         t.Client.LogFailure(blocked, "searching");
 
+        // The full advice twice (15 minutes apart), and a one-line warning for the repeat in between.
         Assert.Equal(2, t.Logger.Entries.Count(e => e.Level == LogLevel.Error));
-        Assert.Equal(1, t.Logger.Entries.Count(e => e.Level == LogLevel.Debug));
+        Assert.Equal(1, t.Logger.Entries.Count(e => e.Level == LogLevel.Warning));
+        Assert.True(t.Logger.Has(LogLevel.Warning, "blocked the request while searching (HTTP 403 challenge)"));
         Assert.True(t.Logger.Has(LogLevel.Error, "different User-Agent"));
     }
 
@@ -418,5 +420,23 @@ public class IfdbClientTests
         }
 
         Assert.True(condition());
+    }
+
+    [Fact]
+    public async Task SearchOutcomesAreLoggedAtInformationLevel()
+    {
+        using var t = new TestClient(logLevel: LogLevel.Information);
+        t.Handler.Html("keywords=hobbit&", Fixture.Read("search.html"));
+        t.Handler.Html("keywords=nothing&", "<html><head><title>Search results - Internet Fanedit Database</title></head><body></body></html>");
+        t.Handler.Html("keywords=one&", Fixture.Read("entry.html"), finalUrl: EntryUrl);
+
+        await t.Client.SearchAsync("hobbit", CancellationToken.None);
+        await t.Client.SearchAsync("nothing", CancellationToken.None);
+        await t.Client.SearchAsync("one", CancellationToken.None);
+
+        Assert.True(t.Logger.Has(LogLevel.Information, "IFDB search for hobbit found 2 result(s)"));
+        Assert.True(t.Logger.Has(LogLevel.Information, "found no results (HTTP 200"));
+        Assert.True(t.Logger.Has(LogLevel.Information, "page title: Search results - Internet Fanedit Database"));
+        Assert.True(t.Logger.Has(LogLevel.Information, "IFDB search for one found 1 result"));
     }
 }

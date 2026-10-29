@@ -107,9 +107,9 @@ internal sealed class IfdbClient
                 return [];
             }
 
-            if (_logger.IsEnabled(LogLevel.Debug))
+            if (_logger.IsEnabled(LogLevel.Information))
             {
-                _logger.LogDebug("IFDB search for {Keywords} went straight to {Url}", keywords, page.FinalUrl);
+                _logger.LogInformation("IFDB search for {Keywords} found 1 result (fanedit.org went straight to {Url})", keywords, page.FinalUrl);
             }
 
             return [ToSearchResult(entry)];
@@ -124,9 +124,20 @@ internal sealed class IfdbClient
             }
         }
 
-        if (_logger.IsEnabled(LogLevel.Debug))
+        if (results.Count > 0 && _logger.IsEnabled(LogLevel.Information))
         {
-            _logger.LogDebug("IFDB search for {Keywords} found {Count} result(s)", keywords, results.Count);
+            _logger.LogInformation("IFDB search for {Keywords} found {Count} result(s)", keywords, results.Count);
+        }
+        else if (results.Count == 0 && _logger.IsEnabled(LogLevel.Information))
+        {
+            // Enough detail to tell "no such fanedit" from a page that isn't what we expected.
+            _logger.LogInformation(
+                "IFDB search for {Keywords} found no results (HTTP {Status}, {Bytes} characters, page title: {Title}, address: {Url})",
+                keywords,
+                (int)page.StatusCode,
+                page.Html.Length,
+                IfdbParser.PageTitle(page.Html),
+                page.FinalUrl);
         }
 
         var max = Math.Clamp(config.MaxSearchResults, 1, 200);
@@ -247,9 +258,10 @@ internal sealed class IfdbClient
 
                 break;
             case IfdbBlockedException:
-                if (_logger.IsEnabled(LogLevel.Debug))
+                // The full explanation is logged at most every 15 minutes; each block still gets a line.
+                if (_logger.IsEnabled(LogLevel.Warning))
                 {
-                    _logger.LogDebug("IFDB: fanedit.org blocked the request while {Action}", action);
+                    _logger.LogWarning("IFDB: fanedit.org blocked the request while {Action} ({Reason})", action, exception.Message);
                 }
 
                 break;
