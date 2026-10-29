@@ -73,11 +73,12 @@ test("a dev build replaces earlier dev builds and keeps releases, which stay new
   assert.ok(!isDevVersion("1.10.11.0"));
 });
 
-test("the mirrored dev manifest lists only the latest build, even if an older one was numbered higher", () => {
-  let manifest = updateManifest([], build, release("2.0.0.5", { replace: "all" }));
-  manifest = updateManifest(manifest, build, release("0.2.0.6", { replace: "all" }));
+test("sets the catalog image when there is one", () => {
+  const without = updateManifest([], build, release("2.0.0.0"));
+  assert.equal(without[0].imageUrl, undefined);
 
-  assert.deepEqual(manifest[0].versions.map(v => v.version), ["0.2.0.6"]);
+  const withImage = updateManifest(without, build, release("2.0.0.1", { imageUrl: "https://example.com/image.png" }));
+  assert.equal(withImage[0].imageUrl, "https://example.com/image.png");
 });
 
 test("command line writes the manifest", () => {

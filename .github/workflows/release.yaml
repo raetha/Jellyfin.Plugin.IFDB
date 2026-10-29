@@ -7,7 +7,9 @@ name: 'Release'
 # Dev: every push to dev builds 0.MAJOR.MINOR.<run number> towards build.yaml's upcoming version,
 #   replaces the rolling "dev-build" pre-release, and replaces the previous dev build in
 #   manifest.json. Numbered below every release, dev builds are never installed automatically
-#   over a release. manifest-dev.json (the old separate dev repository) mirrors the dev build.
+#   over a release.
+# If the repository has an image.png, it's packaged with the plugin and published next to the
+# manifest as the catalog image.
 # Both run the full CI (build, tests, coverage gate) first and publish nothing if it fails.
 
 on:
@@ -169,17 +171,17 @@ jobs:
             CHECKSUM="$(cat "dist/${ZIP%.zip}.md5")" \
               node scripts/generate-manifest.js
           }
-          if [ "$CHANNEL" = "stable" ]; then
-            add manifest.json ""
-          else
-            add manifest.json dev
-            add manifest-dev.json all
+          if [ -f image.png ]; then
+            cp image.png "$worktree/image.png"
+            export IMAGE_URL="https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/refs/heads/manifest/image.png"
           fi
+          add manifest.json "$([ "$CHANNEL" = "stable" ] || echo dev)"
 
           cd "$worktree"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add manifest.json manifest-dev.json 2>/dev/null || git add manifest.json
+          git add manifest.json
+          [ -f image.png ] && git add image.png
           if git diff --cached --quiet; then
             echo "No manifest changes."
             exit 0
