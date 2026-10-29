@@ -4,10 +4,10 @@ name: 'Release'
 #   X.Y.Z.0, sets the release's notes from CHANGELOG.md, attaches the files and adds it to
 #   manifest.json. The tag must match build.yaml's version, and the release's target branch
 #   decides which Jellyfin it's built for.
-# Dev: every push to dev builds 0.MAJOR.MINOR.<run number> towards build.yaml's upcoming version,
-#   replaces the rolling "dev-build" pre-release, and replaces the previous dev build in
-#   manifest.json. Numbered below every release, dev builds are never installed automatically
-#   over a release.
+# Dev: every push to dev builds MAJOR.MINOR.PATCH.<run number> from build.yaml's upcoming
+#   version, replaces the rolling "dev-build" pre-release, and makes it the only entry in
+#   manifest-dev.json. Dev builds stay out of manifest.json: Jellyfin updates plugins to the
+#   highest version in any repository, so mixing them would move release users onto test builds.
 # If the repository has an image.png, it's packaged with the plugin and published next to the
 # manifest as the catalog image.
 # Both run the full CI (build, tests, coverage gate) first and publish nothing if it fails.
@@ -68,8 +68,7 @@ jobs:
               echo "::error::Dev builds are only published from the dev branch"
               exit 1
             fi
-            IFS=. read -r major minor _ <<< "$planned"
-            version="0.${major}.${minor}.${GITHUB_RUN_NUMBER}"
+            version="${planned%.*}.${GITHUB_RUN_NUMBER}"
             echo "channel=dev" >> "$GITHUB_OUTPUT"
           fi
 
@@ -124,9 +123,9 @@ jobs:
           else
             IFS=. read -r _ _ _ build <<< "$VERSION"
             {
-              echo "Development build ${build} towards ${planned%.*}, from dev (${GITHUB_SHA::7}): $(git log -1 --format=%s)"
+              echo "Development build ${build} of the upcoming ${planned%.*}, from dev (${GITHUB_SHA::7}): $(git log -1 --format=%s)"
               echo
-              echo "For testing. In Jellyfin's plugin catalog, pick this version for IFDB and turn off automatic updates for the plugin while testing; otherwise Jellyfin moves you back to the newest release."
+              echo "For testing. Install it from the development plugin repository, used instead of the release one: https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/refs/heads/manifest/manifest-dev.json"
               echo
               node scripts/changelog.js notes "$planned" || true
             } > "$RUNNER_TEMP/notes.md"
@@ -175,12 +174,18 @@ jobs:
             cp image.png "$worktree/image.png"
             export IMAGE_URL="https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/refs/heads/manifest/image.png"
           fi
-          add manifest.json "$([ "$CHANNEL" = "stable" ] || echo dev)"
+          if [ "$CHANNEL" = "stable" ]; then
+            manifest=manifest.json
+            add "$manifest" ""
+          else
+            manifest=manifest-dev.json
+            add "$manifest" all
+          fi
 
           cd "$worktree"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add manifest.json
+          git add "$manifest"
           [ -f image.png ] && git add image.png
           if git diff --cached --quiet; then
             echo "No manifest changes."
