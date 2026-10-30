@@ -3,3 +3,6 @@ obj/
 .vs/
 .idea/
 artifacts
+coverage/
+node_modules/
+TestResults/

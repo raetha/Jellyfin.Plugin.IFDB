@@ -1,0 +1,92 @@
+name: 'Weekly checks'
+
+# Early warning, run every Monday and on demand. Scheduled and manual runs only work once this
+# file is on the default branch (main).
+# - newest-jellyfin: builds and tests main and dev against the newest stable Jellyfin packages, so an
+#   API change in a new Jellyfin release shows up before users hit it.
+# - live-site: runs the live tests (known searches and entries) against the real fanedit.org, to
+#   catch layout changes. Also runs on every push to dev. A failure can also mean the site's bot
+#   protection blocked GitHub's runners; the summary says which.
+# GitHub emails the repository owner when a scheduled run fails.
+
+on:
+  schedule:
+    - cron: '17 6 * * 1'
+  workflow_dispatch:
+  push:
+    branches: [dev]
+    paths: ['Jellyfin.Plugin.Ifdb/**', 'Jellyfin.Plugin.Ifdb.Tests/**', '.github/workflows/compatibility.yaml']
+
+permissions:
+  contents: read
+
+jobs:
+  newest-jellyfin:
+    name: Newest Jellyfin (${{ matrix.branch }})
+    if: github.event_name != 'push'
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        branch: [main, dev]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ matrix.branch }}
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: |
+            9.0.x
+            10.0.x
+
+      - name: Build and test against the newest Jellyfin
+        run: |
+          dotnet test --configuration Release -p:JellyfinPackageVersion='*' 2>&1 | tee test.log
+          {
+            echo "### ${{ matrix.branch }} against the newest Jellyfin"
+            grep -Pho '"Jellyfin\.Controller/\K[0-9][^"]*' Jellyfin.Plugin.Ifdb/obj/project.assets.json 2>/dev/null | head -1 | sed 's/^/Tested with Jellyfin.Controller /'
+            grep -E 'Passed!|Failed!' test.log || echo "Build failed; see the log."
+          } >> "$GITHUB_STEP_SUMMARY"
+          grep -q 'Passed!' test.log
+
+  live-site:
+    name: Live fanedit.org
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event_name == 'push' && github.sha || 'dev' }}
+
+      - name: Read build.yaml
+        id: plugin
+        run: |
+          framework=$(grep -Po '^framework:\s*"?\K[a-z0-9.]+' build.yaml)
+          echo "sdk=${framework#net}.x" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: ${{ steps.plugin.outputs.sdk }}
+
+      - name: Live tests
+        env:
+          IFDB_LIVE_TESTS: '1'
+        run: |
+          dotnet test --configuration Release --filter "FullyQualifiedName~LiveSiteTests" --logger "console;verbosity=normal" 2>&1 | tee live.log
+          {
+            echo "### Live fanedit.org tests"
+            grep -E 'Passed!|Failed!' live.log || echo "Build failed; see the log."
+          } >> "$GITHUB_STEP_SUMMARY"
+          grep -q 'Passed!' live.log && exit 0
+
+          # Cloudflare often challenges GitHub's datacenter addresses whatever the client sends. That
+          # says nothing about the plugin, so it's a warning; any other failure (layout change,
+          # entry changed) fails the job.
+          failures=$(grep -cE '^\s+Failed Jellyfin' live.log || true)
+          blocked=$(grep -A2 -E '^\s+Failed Jellyfin' live.log | grep -c 'IfdbBlockedException' || true)
+          if [ "$failures" -gt 0 ] && [ "$failures" = "$blocked" ]; then
+            echo "fanedit.org's bot protection blocked GitHub's runner, so the live tests couldn't run." >> "$GITHUB_STEP_SUMMARY"
+            echo "::warning::fanedit.org blocked the GitHub runner (Cloudflare challenge); live tests skipped."
+            exit 0
+          fi
+          exit 1

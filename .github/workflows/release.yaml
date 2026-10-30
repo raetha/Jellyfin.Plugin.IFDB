@@ -1,0 +1,245 @@
+name: 'Release'
+
+# Stable: each release is one pull request from dev into main. When it's merged, the push to
+#   main releases build.yaml's version if there's no vX.Y.Z tag for it yet: it builds plugin
+#   version X.Y.Z.0, creates the GitHub release with that version's CHANGELOG.md section as
+#   its notes, attaches the files and adds the version to manifest.json. The CHANGELOG.md
+#   heading must be dated ("## [2.1.0] - 2026-11-20"), so an undated version fails instead of
+#   being released. Pushes to main that don't change the version release nothing.
+#   Afterwards dev is reset to main when the two hold the same files, so the next cycle starts
+#   clean (left alone if dev already has new work).
+# Maintenance branches (jellyfin-10.11): run this workflow manually on the branch ("Run
+#   workflow"). It releases the same way, without marking the release as the latest.
+# Dev: every push to dev builds MAJOR.MINOR.PATCH.<run number> from build.yaml's upcoming
+#   version, replaces the rolling "dev-build" pre-release, and makes it the only entry in
+#   manifest-dev.json. Dev builds stay out of manifest.json: Jellyfin updates plugins to the
+#   highest version in any repository, so mixing them would move release users onto test builds.
+# If the repository has an image.png, it's packaged with the plugin and published next to the
+# manifest as the catalog image.
+# Everything runs the full CI (build, tests, coverage gate) first and publishes nothing if it fails.
+
+on:
+  push:
+    branches: [main, dev]
+  workflow_dispatch:
+
+# Only the publish and sync jobs write (releases, the manifest branch, and resetting dev).
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Work out version
+    runs-on: ubuntu-24.04
+    outputs:
+      channel: ${{ steps.version.outputs.channel }}
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: scripts/package-lock.json
+
+      - name: Work out version
+        id: version
+        run: |
+          planned=$(grep -Po '^version:\s*"?\K[0-9.]+' build.yaml)
+
+          case "$GITHUB_REF_NAME" in
+            dev)
+              version="${planned%.*}.${GITHUB_RUN_NUMBER}"
+              echo "channel=dev" >> "$GITHUB_OUTPUT"
+              echo "tag=dev-build" >> "$GITHUB_OUTPUT"
+              ;;
+            main|jellyfin-*)
+              if ! [[ "$planned" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.0$ ]]; then
+                echo "::error file=build.yaml::Release versions end in .0 (2.1.0 is 2.1.0.0), got $planned"
+                exit 1
+              fi
+              version="$planned"
+              tag="v${planned%.0}"
+              if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null; then
+                echo "::notice::$tag is already released; nothing to publish."
+                echo "channel=skip" >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
+              (cd scripts && npm ci --no-audit --no-fund)
+              if ! date=$(node scripts/changelog.js released "$planned"); then
+                echo "::error file=CHANGELOG.md::Version ${planned%.0} isn't released yet, but its CHANGELOG.md section has no date. Date it in the release pull request."
+                exit 1
+              fi
+              echo "channel=stable" >> "$GITHUB_OUTPUT"
+              echo "tag=$tag" >> "$GITHUB_OUTPUT"
+              echo "Releasing $tag (dated $date)"
+              ;;
+            *)
+              echo "::error::Releases come from main or a jellyfin-* branch, and dev builds from dev, not $GITHUB_REF_NAME"
+              exit 1
+              ;;
+          esac
+
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "Publishing ${version}"
+
+  build:
+    name: CI
+    needs: prepare
+    if: needs.prepare.outputs.channel != 'skip'
+    uses: ./.github/workflows/ci.yaml
+    with:
+      version: ${{ needs.prepare.outputs.version }}
+
+  publish:
+    name: Publish ${{ needs.prepare.outputs.channel }} ${{ needs.prepare.outputs.version }}
+    needs: [prepare, build]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    # Stable and dev publishing both write to the manifest branch; never at the same time.
+    concurrency:
+      group: manifest
+      cancel-in-progress: false
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      CHANNEL: ${{ needs.prepare.outputs.channel }}
+      VERSION: ${{ needs.prepare.outputs.version }}
+      TAG: ${{ needs.prepare.outputs.tag }}
+      ZIP: ${{ needs.build.outputs.zip }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: plugin
+          path: dist
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: scripts/package-lock.json
+
+      - name: Release notes from CHANGELOG.md
+        run: |
+          (cd scripts && npm ci --no-audit --no-fund)
+          planned=$(grep -Po '^version:\s*"?\K[0-9.]+' build.yaml)
+          if [ "$CHANNEL" = "stable" ]; then
+            node scripts/changelog.js notes "$VERSION" > "$RUNNER_TEMP/notes.md"
+          else
+            IFS=. read -r _ _ _ build <<< "$VERSION"
+            {
+              echo "Development build ${build} of the upcoming ${planned%.*}, from dev (${GITHUB_SHA::7}): $(git log -1 --format=%s)"
+              echo
+              echo "For testing. Install it from the development plugin repository, used instead of the release one: https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/refs/heads/manifest/manifest-dev.json"
+              echo
+              node scripts/changelog.js notes "$planned" || true
+            } > "$RUNNER_TEMP/notes.md"
+          fi
+          cat "$RUNNER_TEMP/notes.md"
+
+      - name: Create the release
+        if: env.CHANNEL == 'stable'
+        run: |
+          # Only main's releases are "latest"; a maintenance release mustn't take that over.
+          latest=$([ "$GITHUB_REF_NAME" = main ] && echo true || echo false)
+          gh release create "$TAG" dist/* \
+            --target "$GITHUB_SHA" \
+            --title "${TAG#v}" \
+            --latest="$latest" \
+            --notes-file "$RUNNER_TEMP/notes.md"
+
+      - name: Replace the dev-build pre-release
+        if: env.CHANNEL == 'dev'
+        run: |
+          gh release delete dev-build --yes --cleanup-tag || true
+          gh release create dev-build dist/* \
+            --prerelease --latest=false \
+            --target "$GITHUB_SHA" \
+            --title "Development build ${VERSION}" \
+            --notes-file "$RUNNER_TEMP/notes.md"
+
+      - name: Update the plugin repository manifests
+        run: |
+          export CHANGELOG="$(cat "$RUNNER_TEMP/notes.md")"
+          worktree="$RUNNER_TEMP/manifest"
+          if git ls-remote --exit-code --heads origin manifest >/dev/null; then
+            git worktree add "$worktree" origin/manifest
+          else
+            git worktree add --detach "$worktree"
+            git -C "$worktree" checkout --orphan manifest
+            git -C "$worktree" rm -rf --quiet .
+          fi
+
+          add() {
+            BUILD_YAML="$PWD/build.yaml" \
+            MANIFEST_PATH="$worktree/$1" \
+            REPLACE="$2" \
+            SOURCE_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${ZIP}" \
+            CHECKSUM="$(cat "dist/${ZIP%.zip}.md5")" \
+              node scripts/generate-manifest.js
+          }
+          if [ -f image.png ]; then
+            cp image.png "$worktree/image.png"
+            export IMAGE_URL="https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/refs/heads/manifest/image.png"
+          fi
+          if [ "$CHANNEL" = "stable" ]; then
+            manifest=manifest.json
+            add "$manifest" ""
+          else
+            manifest=manifest-dev.json
+            add "$manifest" all
+          fi
+
+          cd "$worktree"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$manifest"
+          [ -f image.png ] && git add image.png
+          if git diff --cached --quiet; then
+            echo "No manifest changes."
+            exit 0
+          fi
+          git commit -m "Add ${VERSION} to the plugin repository"
+          for attempt in 1 2 3; do
+            git push origin HEAD:manifest && exit 0
+            git fetch origin manifest && git rebase origin/manifest
+          done
+          exit 1
+
+  # After a release pull request is merged, dev holds the same files as main but different
+  # commits. Reset it to main so the next cycle starts clean; if dev already has new work,
+  # leave it alone (merge main into dev by hand instead).
+  sync-dev:
+    name: Reset dev to main
+    needs: [prepare, publish]
+    if: >-
+      always() && github.event_name == 'push' && github.ref == 'refs/heads/main' &&
+      needs.prepare.result == 'success' &&
+      (needs.publish.result == 'success' || needs.publish.result == 'skipped')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Reset dev to main if they match
+        run: |
+          git rev-parse -q --verify origin/dev >/dev/null || { echo "No dev branch."; exit 0; }
+          if git diff --quiet origin/main origin/dev; then
+            git push --force-with-lease=dev:origin/dev origin origin/main:refs/heads/dev
+            echo "dev reset to main."
+          else
+            echo "::notice::dev has changes that aren't on main, so it was left as it is. Merge main into dev to bring it up to date."
+          fi

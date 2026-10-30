@@ -9,29 +9,104 @@
         <div data-role="content">
             <div class="content-primary">
                 <form id="IfdbConfigForm">
-                    <div class="selectContainer">
-                        <label class="selectLabel" for="Options">Several Options</label>
-                        <select is="emby-select" id="Options" name="Options" class="emby-select-withcolor emby-select">
-                            <option id="optOneOption" value="OneOption">One Option</option>
-                            <option id="optAnotherOption" value="AnotherOption">Another Option</option>
-                        </select>
+                    <div class="verticalSection">
+                        <h2 class="sectionTitle">IFDB (fanedit.org)</h2>
+                        <p>Metadata for fanedits from the Internet Fanedit Database. For best results, keep fanedits in their own Movies library and enable IFDB as its first metadata and image provider.</p>
                     </div>
-                    <div class="inputContainer">
-                        <label class="inputLabel inputLabelUnfocused" for="AnInteger">An Integer</label>
-                        <input id="AnInteger" name="AnInteger" type="number" is="emby-input" min="0" />
-                        <div class="fieldDescription">A Description</div>
+
+                    <div class="verticalSection">
+                        <h3 class="sectionTitle">Metadata</h3>
+                        <div class="checkboxContainer checkboxContainer-withDescription">
+                            <label class="emby-checkbox-label">
+                                <input id="IncludeChangesInOverview" type="checkbox" is="emby-checkbox" />
+                                <span>Add the fanedit's changes to the overview</span>
+                            </label>
+                            <div class="fieldDescription checkboxFieldDescription">Appends sections such as "Editing Details" and "Cuts and Additions" after the synopsis.</div>
+                        </div>
+                        <div class="checkboxContainer checkboxContainer-withDescription">
+                            <label class="emby-checkbox-label">
+                                <input id="AddFaneditTypeTags" type="checkbox" is="emby-checkbox" />
+                                <span>Add the fanedit type as a tag</span>
+                            </label>
+                            <div class="fieldDescription checkboxFieldDescription">For example "FanFix", "Extended" or "Shortcut".</div>
+                        </div>
+                        <div class="checkboxContainer checkboxContainer-withDescription">
+                            <label class="emby-checkbox-label">
+                                <input id="AddFranchiseTags" type="checkbox" is="emby-checkbox" />
+                                <span>Add the franchise as a tag</span>
+                            </label>
+                        </div>
+                        <div class="checkboxContainer checkboxContainer-withDescription">
+                            <label class="emby-checkbox-label">
+                                <input id="SetImdbId" type="checkbox" is="emby-checkbox" />
+                                <span>Store the original film's IMDb id</span>
+                            </label>
+                            <div class="fieldDescription checkboxFieldDescription">Adds an IMDb link. Leave off if other metadata providers are enabled on the library, or they will fill in the original film's details.</div>
+                        </div>
+                        <div class="selectContainer">
+                            <label class="selectLabel" for="FaneditorCredit">Credit fan editors as</label>
+                            <select is="emby-select" id="FaneditorCredit" class="emby-select-withcolor emby-select">
+                                <option value="Director">Director</option>
+                                <option value="Editor">Editor</option>
+                            </select>
+                        </div>
                     </div>
-                    <div class="checkboxContainer checkboxContainer-withDescription">
-                        <label class="emby-checkbox-label">
-                            <input id="TrueFalseSetting" name="TrueFalseCheckBox" type="checkbox" is="emby-checkbox" />
-                            <span>A Checkbox</span>
-                        </label>
+
+                    <div class="verticalSection">
+                        <h3 class="sectionTitle">Matching</h3>
+                        <div class="selectContainer">
+                            <label class="selectLabel" for="MatchType">Search keyword matching</label>
+                            <select is="emby-select" id="MatchType" class="emby-select-withcolor emby-select">
+                                <option value="All">All words</option>
+                                <option value="Any">Any word</option>
+                                <option value="Exact">Exact phrase</option>
+                            </select>
+                            <div class="fieldDescription">How fanedit.org matches the searched title.</div>
+                        </div>
+                        <div class="inputContainer">
+                            <label class="inputLabel inputLabelUnfocused" for="AutoMatchMinimumScore">Automatic match score (0-100)</label>
+                            <input id="AutoMatchMinimumScore" type="number" is="emby-input" min="0" max="100" />
+                            <div class="fieldDescription">During library scans an unidentified movie is only matched when exactly one result scores at least this much. Lower it to match more, at the risk of wrong matches.</div>
+                        </div>
+                        <div class="inputContainer">
+                            <label class="inputLabel inputLabelUnfocused" for="SearchMinimumScore">Identify dialog score (0-100)</label>
+                            <input id="SearchMinimumScore" type="number" is="emby-input" min="0" max="100" />
+                            <div class="fieldDescription">Results scoring below this are hidden in the Identify dialog.</div>
+                        </div>
+                        <div class="inputContainer">
+                            <label class="inputLabel inputLabelUnfocused" for="MaxSearchResults">Maximum search results</label>
+                            <input id="MaxSearchResults" type="number" is="emby-input" min="1" max="200" />
+                        </div>
                     </div>
-                    <div class="inputContainer">
-                        <label class="inputLabel inputLabelUnfocused" for="AString">A String</label>
-                        <input id="AString" name="AString" type="text" is="emby-input" />
-                        <div class="fieldDescription">Another Description</div>
+
+                    <div class="verticalSection">
+                        <h3 class="sectionTitle">Connection</h3>
+                        <div class="inputContainer">
+                            <label class="inputLabel inputLabelUnfocused" for="BaseUrl">Site address</label>
+                            <input id="BaseUrl" type="text" is="emby-input" />
+                            <div class="fieldDescription">https://fanedit.org or https://ifdb.fanedit.org.</div>
+                        </div>
+                        <div class="inputContainer">
+                            <label class="inputLabel inputLabelUnfocused" for="UserAgent">User-Agent</label>
+                            <input id="UserAgent" type="text" is="emby-input" />
+                            <div class="fieldDescription">How the plugin identifies itself to fanedit.org. Leave empty for the default (Jellyfin-IFDB/ followed by the plugin version).</div>
+                        </div>
+                        <div class="inputContainer">
+                            <label class="inputLabel inputLabelUnfocused" for="RequestDelayMilliseconds">Delay between requests (ms)</label>
+                            <input id="RequestDelayMilliseconds" type="number" is="emby-input" min="0" max="60000" />
+                            <div class="fieldDescription">Spaces out requests during library scans to avoid tripping the site's rate limits.</div>
+                        </div>
+                        <div class="inputContainer">
+                            <label class="inputLabel inputLabelUnfocused" for="RequestTimeoutSeconds">Request timeout (seconds)</label>
+                            <input id="RequestTimeoutSeconds" type="number" is="emby-input" min="5" max="300" />
+                        </div>
+                        <div class="inputContainer">
+                            <label class="inputLabel inputLabelUnfocused" for="CacheMinutes">Cache pages for (minutes)</label>
+                            <input id="CacheMinutes" type="number" is="emby-input" min="0" max="1440" />
+                            <div class="fieldDescription">0 turns caching off.</div>
+                        </div>
                     </div>
+
                     <div>
                         <button is="emby-button" type="submit" class="raised button-submit block emby-button">
                             <span>Save</span>
@@ -42,37 +117,44 @@
         </div>
         <script type="text/javascript">
             var IfdbConfig = {
-                pluginUniqueId: '0f18c602-5d24-4f88-bb6e-9e59a2efb1cd'
+                pluginUniqueId: '0f18c602-5d24-4f88-bb6e-9e59a2efb1cd',
+                checkboxes: ['IncludeChangesInOverview', 'AddFaneditTypeTags', 'AddFranchiseTags', 'SetImdbId'],
+                selects: ['FaneditorCredit', 'MatchType'],
+                texts: ['BaseUrl', 'UserAgent'],
+                numbers: ['AutoMatchMinimumScore', 'SearchMinimumScore', 'MaxSearchResults', 'RequestDelayMilliseconds', 'RequestTimeoutSeconds', 'CacheMinutes']
             };
 
             document.querySelector('#IfdbConfigPage')
-                .addEventListener('pageshow', function() {
+                .addEventListener('pageshow', function () {
                     Dashboard.showLoadingMsg();
                     ApiClient.getPluginConfiguration(IfdbConfig.pluginUniqueId).then(function (config) {
-                        document.querySelector('#Options').value = config.Options;
-                        document.querySelector('#AnInteger').value = config.AnInteger;
-                        document.querySelector('#TrueFalseSetting').checked = config.TrueFalseSetting;
-                        document.querySelector('#AString').value = config.AString;
+                        IfdbConfig.checkboxes.forEach(function (id) { document.getElementById(id).checked = !!config[id]; });
+                        IfdbConfig.selects.concat(IfdbConfig.texts, IfdbConfig.numbers).forEach(function (id) {
+                            document.getElementById(id).value = config[id] == null ? '' : config[id];
+                        });
                         Dashboard.hideLoadingMsg();
                     });
                 });
 
             document.querySelector('#IfdbConfigForm')
-                .addEventListener('submit', function(e) {
-                Dashboard.showLoadingMsg();
-                ApiClient.getPluginConfiguration(IfdbConfig.pluginUniqueId).then(function (config) {
-                    config.Options = document.querySelector('#Options').value;
-                    config.AnInteger = document.querySelector('#AnInteger').value;
-                    config.TrueFalseSetting = document.querySelector('#TrueFalseSetting').checked;
-                    config.AString = document.querySelector('#AString').value;
-                    ApiClient.updatePluginConfiguration(IfdbConfig.pluginUniqueId, config).then(function (result) {
-                        Dashboard.processPluginConfigurationUpdateResult(result);
+                .addEventListener('submit', function (e) {
+                    e.preventDefault();
+                    Dashboard.showLoadingMsg();
+                    ApiClient.getPluginConfiguration(IfdbConfig.pluginUniqueId).then(function (config) {
+                        IfdbConfig.checkboxes.forEach(function (id) { config[id] = document.getElementById(id).checked; });
+                        IfdbConfig.selects.concat(IfdbConfig.texts).forEach(function (id) { config[id] = document.getElementById(id).value.trim(); });
+                        IfdbConfig.numbers.forEach(function (id) {
+                            var value = parseInt(document.getElementById(id).value, 10);
+                            if (!isNaN(value)) {
+                                config[id] = value;
+                            }
+                        });
+                        ApiClient.updatePluginConfiguration(IfdbConfig.pluginUniqueId, config).then(function (result) {
+                            Dashboard.processPluginConfigurationUpdateResult(result);
+                        });
                     });
+                    return false;
                 });
-
-                e.preventDefault();
-                return false;
-            });
         </script>
     </div>
 </body>

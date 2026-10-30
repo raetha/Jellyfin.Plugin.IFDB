@@ -29,12 +29,15 @@ public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
     public override string Name => Constants.PluginName;
 
     /// <inheritdoc />
+    public override string Description => "Metadata and images for fanedits from the Internet Fanedit Database (fanedit.org).";
+
+    /// <inheritdoc />
     public override Guid Id => Guid.Parse(Constants.PluginGuid);
 
     /// <summary>
     /// Gets the current plugin instance.
     /// </summary>
-    public static Plugin? Instance { get; private set; }
+    public static Plugin? Instance { get; internal set; }
 
     /// <inheritdoc />
     public IEnumerable<PluginPageInfo> GetPages()

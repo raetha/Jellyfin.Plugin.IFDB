@@ -1,280 +1,140 @@
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.Linq;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
-using HtmlAgilityPack;
-using Jellyfin.Data.Enums;
-using MediaBrowser.Common.Net;
-using MediaBrowser.Controller.Entities;
+using Jellyfin.Plugin.Ifdb.Api;
+using Jellyfin.Plugin.Ifdb.Configuration;
+using Jellyfin.Plugin.Ifdb.Matching;
 using MediaBrowser.Controller.Entities.Movies;
-// using MediaBrowser.Controller.Library;
+using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Providers;
-// using MediaBrowser.Model.Entities;
+using MediaBrowser.Model.Entities;
 using MediaBrowser.Model.Providers;
 using Microsoft.Extensions.Logging;
 
-namespace Jellyfin.Plugin.Ifdb.Providers
+namespace Jellyfin.Plugin.Ifdb.Providers;
+
+/// <summary>
+/// Movie metadata from the Internet Fanedit Database (fanedit.org).
+/// </summary>
+public class IfdbMovieProvider : IRemoteMetadataProvider<Movie, MovieInfo>
 {
+    private readonly IfdbClient _client;
+    private readonly ILibraryManager _libraryManager;
+    private readonly ILogger _logger;
+    private readonly Func<PluginConfiguration> _configuration;
+
     /// <summary>
-    /// The IFDB movie provider.
+    /// Initializes a new instance of the <see cref="IfdbMovieProvider"/> class.
     /// </summary>
-    public class IfdbMovieProvider : IRemoteMetadataProvider<Movie, MovieInfo>
+    /// <param name="httpClientFactory">The HTTP client factory.</param>
+    /// <param name="libraryManager">The library manager, used to clean up file names before searching.</param>
+    /// <param name="logger">The logger.</param>
+    public IfdbMovieProvider(IHttpClientFactory httpClientFactory, ILibraryManager libraryManager, ILogger<IfdbMovieProvider> logger)
+        : this(IfdbClient.ForServer(httpClientFactory, logger), libraryManager, logger, PluginConfigurationProvider.Current)
     {
-        private readonly IHttpClientFactory _httpClientFactory;
-        private readonly ILogger<IfdbMovieProvider> _logger;
+    }
 
-        /// <summary>
-        /// Initializes a new instance of the <see cref="IfdbMovieProvider"/> class.
-        /// </summary>
-        /// <param name="logger">The logger used for diagnostic messages.</param>
-        /// <param name="httpClientFactory">The HTTP client used to perform web requests.</param>
-        public IfdbMovieProvider(IHttpClientFactory httpClientFactory, ILogger<IfdbMovieProvider> logger)
+    internal IfdbMovieProvider(IfdbClient client, ILibraryManager libraryManager, ILogger logger, Func<PluginConfiguration> configuration)
+    {
+        _client = client;
+        _libraryManager = libraryManager;
+        _logger = logger;
+        _configuration = configuration;
+    }
+
+    /// <inheritdoc />
+    public string Name => Constants.PluginName;
+
+    /// <inheritdoc />
+    public async Task<IEnumerable<RemoteSearchResult>> GetSearchResults(MovieInfo searchInfo, CancellationToken cancellationToken)
+    {
+        try
         {
-            _httpClientFactory = httpClientFactory;
-            _logger = logger;
+            // An IFDB id (or pasted fanedit.org URL) entered in the Identify dialog is looked up directly.
+            var id = IfdbUrls.NormalizeId(searchInfo.GetProviderId(Constants.ProviderIdKey));
+            if (id is not null)
+            {
+                var entry = await _client.GetEntryAsync(id, cancellationToken).ConfigureAwait(false);
+                return entry is null ? [] : [IfdbMetadataMapper.ToRemoteSearchResult(entry)];
+            }
+
+            var title = CleanTitle(searchInfo.Name);
+            if (title.Length == 0)
+            {
+                return [];
+            }
+
+            var scored = await IfdbMatcher.SearchAsync(_client, title, cancellationToken).ConfigureAwait(false);
+            return IfdbMatcher.PickSearchResults(scored, _configuration().SearchMinimumScore)
+                .Select(s => IfdbMetadataMapper.ToRemoteSearchResult(s.Result))
+                .ToList();
+        }
+        catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            _client.LogFailure(ex, "searching for \"" + searchInfo.Name + "\"");
+            return [];
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<MetadataResult<Movie>> GetMetadata(MovieInfo info, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var config = _configuration();
+            var id = IfdbUrls.NormalizeId(info.GetProviderId(Constants.ProviderIdKey))
+                ?? await FindMatchAsync(info, config, cancellationToken).ConfigureAwait(false);
+            var entry = id is null ? null : await _client.GetEntryAsync(id, cancellationToken).ConfigureAwait(false);
+            return entry is null ? new MetadataResult<Movie>() : IfdbMetadataMapper.ToMetadataResult(entry, config);
+        }
+        catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            _client.LogFailure(ex, "getting metadata for \"" + info.Name + "\"");
+            return new MetadataResult<Movie>();
+        }
+    }
+
+    /// <inheritdoc />
+    public Task<HttpResponseMessage> GetImageResponse(string url, CancellationToken cancellationToken)
+        => _client.GetImageResponseAsync(url, cancellationToken);
+
+    private async Task<string?> FindMatchAsync(MovieInfo info, PluginConfiguration config, CancellationToken cancellationToken)
+    {
+        var title = CleanTitle(info.Name);
+        if (title.Length == 0)
+        {
+            return null;
         }
 
-        /// <summary>
-        /// Gets the name of the metadata provider.
-        /// </summary>
-        public string Name => Constants.PluginName;
-
-        /// <summary>
-        /// Searches for remote results for a given movie item.
-        /// </summary>
-        /// <param name="searchInfo">The movie to search for.</param>
-        /// <param name="cancellationToken">A token to cancel the operation.</param>
-        /// <returns>A task representing the asynchronous search operation, containing the search results.</returns>
-        public async Task<IEnumerable<RemoteSearchResult>> GetSearchResults(MovieInfo searchInfo, CancellationToken cancellationToken)
+        var scored = await IfdbMatcher.SearchAsync(_client, title, cancellationToken).ConfigureAwait(false);
+        var match = IfdbMatcher.PickAutomaticMatch(scored, config.AutoMatchMinimumScore, info.Year);
+        if (_logger.IsEnabled(LogLevel.Information))
         {
-            var query = Uri.EscapeDataString(searchInfo.Name ?? string.Empty);
-            #pragma warning disable CA1863
-            var searchUrl = string.Format(CultureInfo.InvariantCulture, Constants.IfdbSearchURL, query);
-            _logger.LogInformation("Fetching IFDB search results from {Url}", searchUrl);
-
-            try
+            if (match is not null)
             {
-                var client = _httpClientFactory.CreateClient();
-                var html = await client.GetStringAsync(searchUrl, cancellationToken).ConfigureAwait(false);
-                var doc = new HtmlDocument();
-                doc.LoadHtml(html);
-
-                // Find all result containers
-                var listingNodes = doc.DocumentNode.SelectNodes("//div[contains(@class,'jrRow')]");
-                if (listingNodes == null || listingNodes.Count == 0)
-                {
-                    return Enumerable.Empty<RemoteSearchResult>();
-                }
-
-                var results = new List<RemoteSearchResult>();
-                int index = 1;
-
-                foreach (var node in listingNodes)
-                    {
-                        try
-                        {
-                            var checkBox = node.SelectSingleNode(".//input[contains(@class,'jrCheckListing')]");
-                            if (checkBox == null)
-                            {
-                                continue;
-                            }
-
-                            // Extract values directly from checkbox data attributes
-                            var id = checkBox.GetAttributeValue("value", null);
-                            if (string.IsNullOrWhiteSpace(id))
-                            {
-                                continue;
-                            }
-
-                            var title = checkBox.GetAttributeValue("data-listingtitle", null);
-                            var thumbUrl = checkBox.GetAttributeValue("data-thumburl", null);
-                            var listingUrl = checkBox.GetAttributeValue("data-listingurl", null);
-
-                            // Fallback for title if data attribute missing
-                            if (string.IsNullOrWhiteSpace(title))
-                            {
-                                title = node.SelectSingleNode(".//div[@class='jrListingTitle']/a")?.InnerText?.Trim();
-                            }
-
-                            // Extract ProductionYear from "Fanedit Release Date" field
-                            int? productionYear = null;
-                            var releaseDateNode = node.SelectSingleNode(".//div[contains(@class,'jrFaneditreleasedate')]//a");
-                            if (releaseDateNode != null)
-                            {
-                                var dateText = releaseDateNode.InnerText.Trim(); // e.g. "July 2025"
-                                var parts = dateText.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-                                if (parts.Length == 2 && int.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out var year))
-                                {
-                                    productionYear = year;
-                                }
-                            }
-
-                            // Extract synopsis / overview
-                            var overview = node.SelectSingleNode(".//div[contains(@class,'jrBriefsynopsis')]//div[@class='jrFieldValue']")?.InnerText?.Trim();
-
-                            // Construct result
-                            var result = new RemoteSearchResult
-                            {
-                                Name = title ?? "Unknown",
-                                ProductionYear = productionYear,
-                                ImageUrl = thumbUrl,
-                                ProviderIds = new() { { Constants.PluginName, id } },
-                                SearchProviderName = Constants.PluginName,
-                                Overview = overview,
-                                IndexNumber = index++,
-                                // Url = listingUrl // assuming your model supports this field
-                            };
-
-                            results.Add(result);
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.LogWarning(ex, "Error parsing IFDB search result node.");
-                        }
-                    }
-
-                return results;
+                _logger.LogInformation("IFDB matched \"{Title}\" to \"{Match}\" ({Id}, score {Score})", title, match.Result.Title, match.Result.Id, match.Score);
             }
-            catch (Exception ex)
+            else
             {
-                _logger.LogError(ex, "Failed to fetch or parse IFDB search results from {Url}", searchUrl);
-                return Enumerable.Empty<RemoteSearchResult>();
+                _logger.LogInformation("IFDB found no single match for \"{Title}\" scoring {Minimum} or more among {Count} result(s); use Identify to pick one", title, config.AutoMatchMinimumScore, scored.Count);
             }
         }
 
-        /// <summary>
-        /// Searches for remote results for a given movie item.
-        /// </summary>
-        /// <param name="info">The movie to search for.</param>
-        /// <param name="cancellationToken">A token to cancel the operation.</param>
-        /// <returns>A task representing the asynchronous search operation, containing the search results.</returns>
-        public async Task<MetadataResult<Movie>> GetMetadata(MovieInfo info, CancellationToken cancellationToken)
+        return match?.Result.Id;
+    }
+
+    // Strips years, release tags and other file-name clutter the way the built-in providers do.
+    private string CleanTitle(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
         {
-            if (!info.ProviderIds.TryGetValue(Constants.PluginName, out var id))
-            {
-                _logger.LogWarning("No IFDB provider ID found for movie {Name}", info.Name);
-                return new() { HasMetadata = false };
-            }
-
-            var detailsUrl = string.Format(CultureInfo.InvariantCulture, Constants.IfdbMovieURL, id);
-            _logger.LogInformation("Fetching IFDB metadata for {Name} ({Url})", info.Name, detailsUrl);
-
-            try
-            {
-                var client = _httpClientFactory.CreateClient();
-                var html = await client.GetStringAsync(detailsUrl, cancellationToken).ConfigureAwait(false);
-                var doc = new HtmlDocument();
-                doc.LoadHtml(html);
-
-                var metadata = new MetadataResult<Movie>
-                {
-                    HasMetadata = false,
-                };
-
-                // --- listingNode ---
-                var listingNode = doc.DocumentNode.SelectSingleNode("//input[contains(@class,'jrCheckListing')]");
-
-                // --- Original Movie Title ---
-                var originalTitle = doc.DocumentNode
-                    .SelectSingleNode("//div[contains(@class,'jrOriginalmovietitle')]//div[contains(@class,'jrFieldValue')]//li//a")
-                    ?.InnerText?.Trim();
-
-                // --- Overview / Synopsis ---
-                var overview = doc.DocumentNode
-                    .SelectSingleNode("//div[contains(@class,'jrBriefsynopsis')]//div[contains(@class,'jrFieldValue')]")
-                    ?.InnerText?.Trim();
-
-                // --- Ratings ---
-                // float editorRating = 0, userRating = 0;
-                var editorRatingNode = doc.DocumentNode.SelectSingleNode("//div[contains(@class,'jrOverallEditor')]//span[contains(@class,'jrRatingValue')]/span[1]");
-                var userRatingNode = doc.DocumentNode.SelectSingleNode("//div[contains(@class,'jrOverallUser')]//span[contains(@class,'jrRatingValue')]/span[1]");
-                float editorRating = editorRatingNode != null && float.TryParse(editorRatingNode.InnerText, out var er) ? er : 0;
-                float userRating = userRatingNode != null && float.TryParse(userRatingNode.InnerText, out var ur) ? ur : 0;
-
-                // --- Runtime ---
-                int runtimeMinutes = 0;
-                var runtimeNode = doc.DocumentNode.SelectSingleNode("//div[contains(@class,'jrFaneditrunningtimemin')]//div[contains(@class,'jrFieldValue')]");
-                if (runtimeNode != null && int.TryParse(runtimeNode.InnerText.Trim().Replace(" minutes", string.Empty, StringComparison.Ordinal), out int rt))
-                {
-                    runtimeMinutes = rt;
-                }
-
-                // --- Genres ---
-                var genres = doc.DocumentNode.SelectNodes("//div[contains(@class,'jrGenre')]//li//a")
-                    ?.Select(x => x.InnerText.Trim())
-                    .ToList();
-
-                // --- Media format ---
-                var mediaFormat = doc.DocumentNode.SelectSingleNode("//div[contains(@class,'jrReleaseinformation')]//li")?.InnerText.Trim();
-
-                // --- Franchise / Collection ---
-                var franchise = doc.DocumentNode.SelectSingleNode("//div[contains(@class,'jrFranchise')]//li//a")?.InnerText.Trim();
-
-                // --- Fanedit Release Date for ProductionYear ---
-                int? productionYear = null;
-                var faneditReleaseText = doc.DocumentNode
-                    .SelectSingleNode("//div[contains(@class,'jrFaneditreleasedate')]//div[contains(@class,'jrFieldValue')]//a")
-                    ?.InnerText?.Trim();
-
-                if (!string.IsNullOrWhiteSpace(faneditReleaseText))
-                {
-                    var parts = faneditReleaseText.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-                    if (parts.Length >= 2 && int.TryParse(parts[^1], out int parsedYear))
-                    {
-                        productionYear = parsedYear;
-                    }
-                }
-
-                // --- Assemble Movie Object ---
-                metadata.Item = new Movie
-                {
-                    Name = listingNode?.GetAttributeValue("data-listingtitle", string.Empty).Trim(),
-                    OriginalTitle = !string.IsNullOrWhiteSpace(originalTitle) ? originalTitle : null,
-                    Overview = overview,
-                    CommunityRating = userRating > 0 ? userRating : (float?)null,
-                    CriticRating = editorRating > 0 ? editorRating : (float?)null,
-                    ProductionYear = productionYear,
-                    RunTimeTicks = runtimeMinutes > 0 ? TimeSpan.FromMinutes(runtimeMinutes).Ticks : (long?)null,
-                    Genres = genres?.ToArray() ?? Array.Empty<string>(),
-                    Container = mediaFormat,
-                    CollectionName = franchise,
-                    HomePageUrl = listingNode?.GetAttributeValue("data-listingurl", null),
-                    ProviderIds = new Dictionary<string, string> { { Constants.PluginName, listingNode?.GetAttributeValue("value", string.Empty) ?? string.Empty } },
-                };
-
-                // --- Faneditor Name as Editor ---
-                var editorName = doc.DocumentNode
-                    .SelectSingleNode("//div[contains(@class,'jrFaneditorname')]//li//a")
-                    ?.InnerText?.Trim();
-
-                if (!string.IsNullOrWhiteSpace(editorName))
-                {
-                    metadata.AddPerson(new PersonInfo
-                    {
-                        Name = editorName,
-                        Type = PersonKind.Editor,
-                        Role = "Faneditor"
-                    });
-                }
-
-                metadata.HasMetadata = true;
-
-                return metadata;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to fetch or parse IFDB metadata for {Name}", info.Name);
-                return new() { HasMetadata = false };
-            }
+            return string.Empty;
         }
 
-        /// <inheritdoc />
-        public Task<HttpResponseMessage> GetImageResponse(string url, CancellationToken cancellationToken)
-        {
-            return _httpClientFactory.CreateClient(NamedClient.Default).GetAsync(new Uri(url), cancellationToken);
-        }
+        var parsed = _libraryManager.ParseName(name)?.Name;
+        return string.IsNullOrWhiteSpace(parsed) ? name.Trim() : parsed.Trim();
     }
 }
