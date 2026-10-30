@@ -4,6 +4,14 @@ All notable changes to the IFDB plugin. Each version's section here becomes its 
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/). Jellyfin shows them with a fourth `.0` (2.0.0 is `2.0.0.0`). Development builds use the fourth number as a build number since the latest release (`2.0.0.12` is build 12 since 2.0.0) and are published in a separate plugin repository.
 
+## [1.11.1] - Unreleased
+
+### Changed
+- Updated the HtmlAgilityPack page-parsing library to 1.13.
+
+### Behind the scenes
+- More thorough tests, current GitHub Actions versions, and CodeQL fixes in the release scripts (the same as 2.0.1).
+
 ## [1.11.0] - 2026-10-30
 
 The last version for Jellyfin 10.11. Jellyfin 12 servers are offered version 2.0.0, which has the same fixes and features.
@@ -48,5 +56,6 @@ The last version for Jellyfin 10.11. Jellyfin 12 servers are offered version 2.0
 
 - First release, for Jellyfin 10.11: searches fanedit.org by title and fetches the faneditor, genres, rating, year, summary and poster.
 
+[1.11.1]: https://github.com/raetha/Jellyfin.Plugin.IFDB/compare/v1.11.0...jellyfin-10.11
 [1.11.0]: https://github.com/raetha/Jellyfin.Plugin.IFDB/compare/v1.10.11.0...v1.11.0
 [1.10.11]: https://github.com/raetha/Jellyfin.Plugin.IFDB/releases/tag/v1.10.11.0
