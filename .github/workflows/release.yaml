@@ -1,26 +1,29 @@
 name: 'Release'
 
-# Stable: publishing a GitHub release tagged vX.Y.Z (not marked pre-release) builds plugin version
-#   X.Y.Z.0, sets the release's notes from CHANGELOG.md, attaches the files and adds it to
-#   manifest.json. The tag must match build.yaml's version, and the release's target branch
-#   decides which Jellyfin it's built for.
+# Stable: each release is one pull request from dev into main. When it's merged, the push to
+#   main releases build.yaml's version if there's no vX.Y.Z tag for it yet: it builds plugin
+#   version X.Y.Z.0, creates the GitHub release with that version's CHANGELOG.md section as
+#   its notes, attaches the files and adds the version to manifest.json. The CHANGELOG.md
+#   heading must be dated ("## [2.1.0] - 2026-11-20"), so an undated version fails instead of
+#   being released. Pushes to main that don't change the version release nothing.
+#   Afterwards dev is reset to main when the two hold the same files, so the next cycle starts
+#   clean (left alone if dev already has new work).
+# Maintenance branches (jellyfin-10.11): run this workflow manually on the branch ("Run
+#   workflow"). It releases the same way, without marking the release as the latest.
 # Dev: every push to dev builds MAJOR.MINOR.PATCH.<run number> from build.yaml's upcoming
 #   version, replaces the rolling "dev-build" pre-release, and makes it the only entry in
 #   manifest-dev.json. Dev builds stay out of manifest.json: Jellyfin updates plugins to the
 #   highest version in any repository, so mixing them would move release users onto test builds.
 # If the repository has an image.png, it's packaged with the plugin and published next to the
 # manifest as the catalog image.
-# Both run the full CI (build, tests, coverage gate) first and publish nothing if it fails.
+# Everything runs the full CI (build, tests, coverage gate) first and publishes nothing if it fails.
 
 on:
-  release:
-    types: [published]
   push:
-    branches: [dev]
-    paths-ignore: ['**/*.md']
+    branches: [main, dev]
   workflow_dispatch:
 
-# Only the publish job writes (release assets and the manifest branch).
+# Only the publish and sync jobs write (releases, the manifest branch, and resetting dev).
 permissions:
   contents: read
 
@@ -35,42 +38,53 @@ jobs:
     outputs:
       channel: ${{ steps.version.outputs.channel }}
       version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: scripts/package-lock.json
+
       - name: Work out version
         id: version
-        env:
-          EVENT: ${{ github.event_name }}
-          PRERELEASE: ${{ github.event.release.prerelease }}
-          TAG: ${{ github.event.release.tag_name }}
         run: |
           planned=$(grep -Po '^version:\s*"?\K[0-9.]+' build.yaml)
 
-          if [ "$EVENT" = "release" ]; then
-            if [ "$PRERELEASE" = "true" ]; then
-              echo "::notice::Pre-releases aren't published to a manifest; dev builds come from the dev branch."
-              echo "channel=skip" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-            if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-              echo "::error::Release tags must look like v2.0.0, got $TAG"
+          case "$GITHUB_REF_NAME" in
+            dev)
+              version="${planned%.*}.${GITHUB_RUN_NUMBER}"
+              echo "channel=dev" >> "$GITHUB_OUTPUT"
+              echo "tag=dev-build" >> "$GITHUB_OUTPUT"
+              ;;
+            main|jellyfin-*)
+              if ! [[ "$planned" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.0$ ]]; then
+                echo "::error file=build.yaml::Release versions end in .0 (2.1.0 is 2.1.0.0), got $planned"
+                exit 1
+              fi
+              version="$planned"
+              tag="v${planned%.0}"
+              if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null; then
+                echo "::notice::$tag is already released; nothing to publish."
+                echo "channel=skip" >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
+              (cd scripts && npm ci --no-audit --no-fund)
+              if ! date=$(node scripts/changelog.js released "$planned"); then
+                echo "::error file=CHANGELOG.md::Version ${planned%.0} isn't released yet, but its CHANGELOG.md section has no date. Date it in the release pull request."
+                exit 1
+              fi
+              echo "channel=stable" >> "$GITHUB_OUTPUT"
+              echo "tag=$tag" >> "$GITHUB_OUTPUT"
+              echo "Releasing $tag (dated $date)"
+              ;;
+            *)
+              echo "::error::Releases come from main or a jellyfin-* branch, and dev builds from dev, not $GITHUB_REF_NAME"
               exit 1
-            fi
-            version="${TAG#v}.0"
-            if [ "$version" != "$planned" ]; then
-              echo "::error file=build.yaml::Tag $TAG means version $version, but build.yaml at that commit says $planned"
-              exit 1
-            fi
-            echo "channel=stable" >> "$GITHUB_OUTPUT"
-          else
-            if [ "$GITHUB_REF_NAME" != "dev" ]; then
-              echo "::error::Dev builds are only published from the dev branch"
-              exit 1
-            fi
-            version="${planned%.*}.${GITHUB_RUN_NUMBER}"
-            echo "channel=dev" >> "$GITHUB_OUTPUT"
-          fi
+              ;;
+          esac
 
           echo "version=${version}" >> "$GITHUB_OUTPUT"
           echo "Publishing ${version}"
@@ -97,6 +111,7 @@ jobs:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       CHANNEL: ${{ needs.prepare.outputs.channel }}
       VERSION: ${{ needs.prepare.outputs.version }}
+      TAG: ${{ needs.prepare.outputs.tag }}
       ZIP: ${{ needs.build.outputs.zip }}
     steps:
       - uses: actions/checkout@v4
@@ -132,11 +147,16 @@ jobs:
           fi
           cat "$RUNNER_TEMP/notes.md"
 
-      - name: Attach to the release
+      - name: Create the release
         if: env.CHANNEL == 'stable'
         run: |
-          gh release edit "$GITHUB_REF_NAME" --notes-file "$RUNNER_TEMP/notes.md"
-          gh release upload "$GITHUB_REF_NAME" dist/* --clobber
+          # Only main's releases are "latest"; a maintenance release mustn't take that over.
+          latest=$([ "$GITHUB_REF_NAME" = main ] && echo true || echo false)
+          gh release create "$TAG" dist/* \
+            --target "$GITHUB_SHA" \
+            --title "${TAG#v}" \
+            --latest="$latest" \
+            --notes-file "$RUNNER_TEMP/notes.md"
 
       - name: Replace the dev-build pre-release
         if: env.CHANNEL == 'dev'
@@ -151,8 +171,6 @@ jobs:
       - name: Update the plugin repository manifests
         run: |
           export CHANGELOG="$(cat "$RUNNER_TEMP/notes.md")"
-          tag=$([ "$CHANNEL" = "stable" ] && echo "$GITHUB_REF_NAME" || echo dev-build)
-
           worktree="$RUNNER_TEMP/manifest"
           if git ls-remote --exit-code --heads origin manifest >/dev/null; then
             git worktree add "$worktree" origin/manifest
@@ -166,7 +184,7 @@ jobs:
             BUILD_YAML="$PWD/build.yaml" \
             MANIFEST_PATH="$worktree/$1" \
             REPLACE="$2" \
-            SOURCE_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${tag}/${ZIP}" \
+            SOURCE_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${ZIP}" \
             CHECKSUM="$(cat "dist/${ZIP%.zip}.md5")" \
               node scripts/generate-manifest.js
           }
@@ -197,3 +215,31 @@ jobs:
             git fetch origin manifest && git rebase origin/manifest
           done
           exit 1
+
+  # After a release pull request is merged, dev holds the same files as main but different
+  # commits. Reset it to main so the next cycle starts clean; if dev already has new work,
+  # leave it alone (merge main into dev by hand instead).
+  sync-dev:
+    name: Reset dev to main
+    needs: [prepare, publish]
+    if: >-
+      always() && github.event_name == 'push' && github.ref == 'refs/heads/main' &&
+      needs.prepare.result == 'success' &&
+      (needs.publish.result == 'success' || needs.publish.result == 'skipped')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Reset dev to main if they match
+        run: |
+          git rev-parse -q --verify origin/dev >/dev/null || { echo "No dev branch."; exit 0; }
+          if git diff --quiet origin/main origin/dev; then
+            git push --force-with-lease=dev:origin/dev origin origin/main:refs/heads/dev
+            echo "dev reset to main."
+          else
+            echo "::notice::dev has changes that aren't on main, so it was left as it is. Merge main into dev to bring it up to date."
+          fi

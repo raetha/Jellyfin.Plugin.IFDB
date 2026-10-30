@@ -87,11 +87,11 @@ The current Jellyfin major is supported on `main`. When a new Jellyfin major shi
 | Branch | Purpose | Workflows |
 |---|---|---|
 | `dev` | Day-to-day work | CI; every push publishes a dev build |
-| `main` | Released code | CI; stable releases are tagged from here |
-| `jellyfin-10.11` | Fixes for Jellyfin 10.11 (plugin 1.x) | CI; releases tagged from here |
+| `main` | Released code: one squash-merged pull request from `dev` per release | CI; each merge releases build.yaml's version if it isn't released yet, then resets `dev` to `main` |
+| `jellyfin-10.11` | Fixes for Jellyfin 10.11 (plugin 1.x) | CI; releases by running the Release workflow on this branch |
 
 - **CI** (`ci.yaml`): build with analyzers as errors, tests with the coverage gate, release-script tests, packaging. Runs on every push and pull request.
-- **Release** (`release.yaml`): runs CI, then publishes. Dev pushes replace the `dev-build` pre-release and `manifest-dev.json`. Stable releases get their notes from `CHANGELOG.md`, their files attached, and are added to `manifest.json`.
+- **Release** (`release.yaml`): runs CI, then publishes. Dev pushes replace the `dev-build` pre-release and `manifest-dev.json`. A push to `main` with a version that has no `vX.Y.Z` tag yet creates that release, with notes from `CHANGELOG.md` and the files attached, and adds it to `manifest.json`. It then resets `dev` to `main` if they hold the same files.
 - **Weekly checks** (`compatibility.yaml`): newest Jellyfin packages, and the live fanedit.org tests. The live tests also run on every push to `dev`. Scheduled and manual runs only work once the file is on `main`.
 - Code scanning uses GitHub's default CodeQL setup (repository settings); Dependabot runs weekly against `dev`.
 
@@ -99,11 +99,12 @@ The current Jellyfin major is supported on `main`. When a new Jellyfin major shi
 While working, add notes under the upcoming version's heading in `CHANGELOG.md` (for example `## [2.1.0] - Unreleased`), with `build.yaml` and `Directory.Build.props` set to that version (`2.1.0.0`).
 
 1. On `dev`, replace `Unreleased` in that heading with the release date.
-2. Merge `dev` into `main`.
-3. Publish a GitHub release from `main` tagged `v2.1.0` (not marked pre-release). The notes can be left empty: the workflow fills them in from `CHANGELOG.md`, checks the tag matches `build.yaml`, builds, attaches the files and adds the version to `manifest.json`.
-4. On `dev`, start the next version: bump `build.yaml` and `Directory.Build.props`, and add its heading to `CHANGELOG.md`.
+2. Open a pull request from `dev` into `main` and squash-merge it.
+3. That's it. The merge releases `v2.1.0`: the workflow checks the changelog heading is dated, builds and tests, creates the GitHub release with the changelog section as its notes, attaches the files and adds the version to `manifest.json`. A version that's already tagged isn't released again, and an undated heading fails the run instead of releasing.
+4. `dev` is then reset to `main` automatically, so the next cycle starts from the released code. If something landed on `dev` while the pull request was open, `dev` is left alone; merge `main` into it by hand.
+5. On `dev`, start the next version: bump `build.yaml` and `Directory.Build.props`, and add its heading to `CHANGELOG.md`.
 
-For a Jellyfin 10.11 fix, do the same on `jellyfin-10.11` and target the release at that branch.
+For a Jellyfin 10.11 fix, commit to `jellyfin-10.11` (with its changelog heading dated), then run the **Release** workflow on that branch from the Actions tab. Its releases aren't marked as GitHub's "latest" release.
 
 ### Plugin repository files
 The repository manifests Jellyfin reads (`manifest.json` for releases, `manifest-dev.json` for dev builds, plus the catalog image) live on their own `manifest` branch. Every release and dev build updates them, so keeping them off `main` and `dev` avoids a stream of bot commits (and CI runs) on the working branches, avoids merge conflicts between them, and gives both release lines (`main` and `jellyfin-10.11`) one shared manifest.

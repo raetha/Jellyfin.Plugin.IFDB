@@ -6,7 +6,7 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const YAML = require("yaml");
-const { semver, extractNotes, setBuildYamlChangelog, main } = require("./changelog");
+const { semver, extractNotes, releaseDate, setBuildYamlChangelog, main } = require("./changelog");
 
 const changelog = `# Changelog
 
@@ -52,6 +52,17 @@ test("missing and empty sections are errors", () => {
   assert.throws(() => extractNotes("## [1.0.0]\n\n## [0.9.0]\n- x\n", "1.0.0"), /is empty/);
 });
 
+test("reads a version's release date", () => {
+  assert.equal(releaseDate(changelog, "2.0.0.0"), "2026-11-01");
+  assert.equal(releaseDate("## [1.0.0] - 2025-01-02\r\n- x\r\n", "1.0.0"), "2025-01-02");
+});
+
+test("an undated or missing version has no release date", () => {
+  assert.throws(() => releaseDate("## [2.1.0] - Unreleased\n- x\n", "2.1.0"), /has no release date/);
+  assert.throws(() => releaseDate("## [2.1.0]\n- x\n", "2.1.0"), /has no release date/);
+  assert.throws(() => releaseDate(changelog, "3.0.0"), /no "## \[3\.0\.0\]" section/);
+});
+
 test("handles Windows line endings", () => {
   assert.equal(extractNotes("## [1.0.0]\r\n- One\r\n", "1.0.0"), "- One");
 });
@@ -77,10 +88,12 @@ test("command line: notes and build-yaml", () => {
   process.stdout.write = chunk => { written.push(chunk); return true; };
   try {
     main(["notes", "2.0.0", changelogPath]);
+    main(["released", "2.0.0.0", changelogPath]);
   } finally {
     process.stdout.write = original;
   }
   assert.match(written.join(""), /Searching works again/);
+  assert.match(written.join(""), /^2026-11-01$/m);
 
   main(["build-yaml", "2.0.0.0", buildPath, changelogPath]);
   assert.match(YAML.parse(fs.readFileSync(buildPath, "utf8")).changelog, /Requires Jellyfin 12/);

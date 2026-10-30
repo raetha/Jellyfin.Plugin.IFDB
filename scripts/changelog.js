@@ -5,6 +5,9 @@
 //       Prints that version's section (without its heading). Fails if there isn't one.
 //   node changelog.js build-yaml <version> <build.yaml> [CHANGELOG.md]
 //       Puts that section into build.yaml's changelog, so the packaged plugin carries it.
+//   node changelog.js released <version> [CHANGELOG.md]
+//       Prints that version's release date ("## [2.0.0] - 2026-10-30"). Fails if the section
+//       is missing or not dated yet ("Unreleased"), so an undated version is never released.
 //
 // <version> may have three or four parts; "2.0.0.0" finds "## [2.0.0]".
 "use strict";
@@ -40,6 +43,20 @@ function extractNotes(changelog, version) {
   return notes;
 }
 
+function releaseDate(changelog, version) {
+  const wanted = semver(version);
+  const heading = changelog.replace(/\r\n/g, "\n").split("\n")
+    .find(l => new RegExp(`^## \\[${wanted.replace(/\./g, "\\.")}\\]`).test(l));
+  if (!heading) {
+    throw new Error(`CHANGELOG.md has no "## [${wanted}]" section`);
+  }
+  const date = /^## \[[^\]]+\]\s*-\s*(\d{4}-\d{2}-\d{2})\s*$/.exec(heading);
+  if (!date) {
+    throw new Error(`CHANGELOG.md's "## [${wanted}]" heading has no release date (write "## [${wanted}] - YYYY-MM-DD")`);
+  }
+  return date[1];
+}
+
 function setBuildYamlChangelog(buildYaml, notes) {
   const doc = YAML.parseDocument(buildYaml);
   doc.set("changelog", notes);
@@ -55,12 +72,15 @@ function main(args) {
     const changelog = fs.readFileSync(files[1] || "CHANGELOG.md", "utf8");
     const updated = setBuildYamlChangelog(fs.readFileSync(files[0], "utf8"), extractNotes(changelog, version));
     fs.writeFileSync(files[0], updated);
+  } else if (command === "released" && version) {
+    const changelog = fs.readFileSync(files[0] || "CHANGELOG.md", "utf8");
+    process.stdout.write(releaseDate(changelog, version) + "\n");
   } else {
-    throw new Error("Usage: changelog.js notes <version> [CHANGELOG.md] | build-yaml <version> <build.yaml> [CHANGELOG.md]");
+    throw new Error("Usage: changelog.js notes <version> [CHANGELOG.md] | build-yaml <version> <build.yaml> [CHANGELOG.md] | released <version> [CHANGELOG.md]");
   }
 }
 
-module.exports = { semver, extractNotes, setBuildYamlChangelog, main };
+module.exports = { semver, extractNotes, releaseDate, setBuildYamlChangelog, main };
 
 if (require.main === module) {
   try {
