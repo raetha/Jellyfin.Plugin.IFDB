@@ -62,7 +62,8 @@ internal static partial class IfdbParser
                 }
 
                 // The title sits two levels inside the listing's container (see fanedit-provider).
-                var container = titleNode.ParentNode.ParentNode ?? titleNode;
+                // A node selected from a parsed document always has a parent.
+                var container = titleNode.ParentNode!.ParentNode ?? titleNode;
                 var result = new IfdbSearchResult
                 {
                     Id = id,
@@ -339,7 +340,8 @@ internal static partial class IfdbParser
         {
             foreach (var img in coverImages)
             {
-                var parentLink = img.ParentNode.Name == "a" ? img.ParentNode.GetAttributeValue("href", string.Empty) : null;
+                // An element selected from a parsed document always has a parent.
+                var parentLink = img.ParentNode!.Name == "a" ? img.ParentNode.GetAttributeValue("href", string.Empty) : null;
                 Add(IsImageUrl(parentLink) ? parentLink : ImageSource(img), img);
             }
         }
