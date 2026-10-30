@@ -14,10 +14,10 @@ A Jellyfin movie metadata provider for the [Internet Fanedit Database (IFDB)](ht
 | 10.11 | 1.x | Maintenance only, from the `jellyfin-10.11` branch |
 
 #### Development builds
-Every change to the `dev` branch is published as a test build, numbered from the upcoming version plus a build number (`2.1.0.57` is build 57 of the upcoming 2.1.0). They're in a separate repository:
+Every change to the `dev` branch is published as a test build, numbered from the latest release plus a build number (`2.0.0.57` is build 57 since 2.0.0). They're in a separate repository:
 `https://raw.githubusercontent.com/raetha/Jellyfin.Plugin.IFDB/refs/heads/manifest/manifest-dev.json`
 
-Use it **instead of** the release repository, not alongside it. Jellyfin combines all your repositories and updates each plugin to the highest version it finds in any of them, so with both added, release and dev builds would replace each other. To go back to releases, swap the repositories back and install the release from the catalog. Between development cycles the latest dev build has the same code as the latest release, so staying on the dev repository is also fine.
+You can add it alongside the release repository. Jellyfin installs the highest version it finds in any repository, and the numbering keeps that in order: each dev build is higher than the release before it, and the next release (`2.1.0.0`) is higher than every dev build that led up to it. So a server with both gets every dev build and then the release, and moves on to dev builds again after that. To stop getting dev builds, remove the development repository; you'll move back to releases with the next one.
 
 What changed in each version is in [CHANGELOG.md](CHANGELOG.md).
 
@@ -76,7 +76,7 @@ IFDB_LIVE_TESTS=1 dotnet test --filter LiveSiteTests   # IFDB_USER_AGENT=... to 
 ### Versioning
 Plugin versions are [SemVer](https://semver.org/) (`MAJOR.MINOR.PATCH`), written as Jellyfin's four-part version with `.0` on the end (`2.1.0` → `2.1.0.0`). Which Jellyfin a build runs on is set separately by `targetAbi` in `build.yaml`. A new plugin major version accompanies a new minimum Jellyfin version.
 
-Development builds use the upcoming version from `build.yaml` with the CI run number as the fourth part (`2.1.0.57`). They're only listed in `manifest-dev.json`, never in `manifest.json`.
+Development builds use the latest release's version with the CI run number as the fourth part (`2.0.0.57`), so they sort above that release and below the next one. They're only listed in `manifest-dev.json`, never in `manifest.json`. Each release from `main` also replaces the entry in `manifest-dev.json` until the next dev build, so servers using both repositories see the release as the newest version.
 
 Release notes live in [CHANGELOG.md](CHANGELOG.md) ([Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format). The release workflow uses a version's section as the GitHub release notes, the changelog in Jellyfin's catalog, and the changelog inside the plugin package. CI fails if the version in `build.yaml` has no section.
 
