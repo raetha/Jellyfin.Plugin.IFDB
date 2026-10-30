@@ -24,17 +24,17 @@ jobs:
   newest-jellyfin:
     name: Newest Jellyfin (${{ matrix.branch }})
     if: github.event_name != 'push'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
         branch: [main, dev]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ matrix.branch }}
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: |
             9.0.x
@@ -52,9 +52,9 @@ jobs:
 
   live-site:
     name: Live fanedit.org
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event_name == 'push' && github.sha || 'dev' }}
 
@@ -64,7 +64,7 @@ jobs:
           framework=$(grep -Po '^framework:\s*"?\K[a-z0-9.]+' build.yaml)
           echo "sdk=${framework#net}.x" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: ${{ steps.plugin.outputs.sdk }}
 
