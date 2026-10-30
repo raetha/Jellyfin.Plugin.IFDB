@@ -23,10 +23,16 @@ function semver(version) {
   return parts.slice(0, 3).join(".");
 }
 
+// A plain prefix test rather than a regular expression built from the version, so nothing
+// in the version can change what matches. "## [2.0.0]" doesn't match "## [2.0.0.1]".
+function isHeading(line, version) {
+  return line.startsWith(`## [${version}]`);
+}
+
 function extractNotes(changelog, version) {
   const wanted = semver(version);
   const lines = changelog.replace(/\r\n/g, "\n").split("\n");
-  const start = lines.findIndex(l => new RegExp(`^## \\[${wanted.replace(/\./g, "\\.")}\\]`).test(l));
+  const start = lines.findIndex(l => isHeading(l, wanted));
   if (start < 0) {
     throw new Error(`CHANGELOG.md has no "## [${wanted}]" section`);
   }
@@ -45,8 +51,7 @@ function extractNotes(changelog, version) {
 
 function releaseDate(changelog, version) {
   const wanted = semver(version);
-  const heading = changelog.replace(/\r\n/g, "\n").split("\n")
-    .find(l => new RegExp(`^## \\[${wanted.replace(/\./g, "\\.")}\\]`).test(l));
+  const heading = changelog.replace(/\r\n/g, "\n").split("\n").find(l => isHeading(l, wanted));
   if (!heading) {
     throw new Error(`CHANGELOG.md has no "## [${wanted}]" section`);
   }
