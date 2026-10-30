@@ -361,7 +361,7 @@ public class IfdbClientTests
     [Fact]
     public void BlockedRequestsLogOneErrorPerQuarterHour()
     {
-        using var t = new TestClient();
+        using var t = new TestClient(logLevel: LogLevel.Debug);
         var blocked = new IfdbBlockedException("HTTP 403 challenge");
 
         t.Client.LogFailure(blocked, "searching");
@@ -369,11 +369,12 @@ public class IfdbClientTests
         t.Time.Advance(TimeSpan.FromMinutes(16));
         t.Client.LogFailure(blocked, "searching");
 
-        // The full advice twice (15 minutes apart), and a one-line warning for the repeat in between.
+        // The full advice twice (15 minutes apart), and a Debug line for the repeat in between.
         Assert.Equal(2, t.Logger.Entries.Count(e => e.Level == LogLevel.Error));
-        Assert.Equal(1, t.Logger.Entries.Count(e => e.Level == LogLevel.Warning));
-        Assert.True(t.Logger.Has(LogLevel.Warning, "blocked the request while searching (HTTP 403 challenge)"));
-        Assert.True(t.Logger.Has(LogLevel.Error, "different User-Agent"));
+        Assert.Equal(1, t.Logger.Entries.Count(e => e.Level == LogLevel.Debug));
+        Assert.True(t.Logger.Has(LogLevel.Debug, "blocked the request while searching (HTTP 403 challenge)"));
+        Assert.True(t.Logger.Has(LogLevel.Error, "Cloudflare bot protection"));
+        Assert.True(t.Logger.Has(LogLevel.Error, "#-troubleshooting"));
     }
 
     [Fact]
@@ -423,9 +424,9 @@ public class IfdbClientTests
     }
 
     [Fact]
-    public async Task SearchOutcomesAreLoggedAtInformationLevel()
+    public async Task SearchOutcomesAreLoggedAtDebugLevel()
     {
-        using var t = new TestClient(logLevel: LogLevel.Information);
+        using var t = new TestClient(logLevel: LogLevel.Debug);
         t.Handler.Html("keywords=hobbit&", Fixture.Read("search.html"));
         t.Handler.Html("keywords=nothing&", "<html><head><title>Search results - Internet Fanedit Database</title></head><body></body></html>");
         t.Handler.Html("keywords=one&", Fixture.Read("entry.html"), finalUrl: EntryUrl);
@@ -434,9 +435,9 @@ public class IfdbClientTests
         await t.Client.SearchAsync("nothing", CancellationToken.None);
         await t.Client.SearchAsync("one", CancellationToken.None);
 
-        Assert.True(t.Logger.Has(LogLevel.Information, "IFDB search for hobbit found 2 result(s)"));
-        Assert.True(t.Logger.Has(LogLevel.Information, "found no results (HTTP 200"));
-        Assert.True(t.Logger.Has(LogLevel.Information, "page title: Search results - Internet Fanedit Database"));
-        Assert.True(t.Logger.Has(LogLevel.Information, "IFDB search for one found 1 result"));
+        Assert.True(t.Logger.Has(LogLevel.Debug, "IFDB search for hobbit found 2 result(s)"));
+        Assert.True(t.Logger.Has(LogLevel.Debug, "found no results (HTTP 200"));
+        Assert.True(t.Logger.Has(LogLevel.Debug, "page title: Search results - Internet Fanedit Database"));
+        Assert.True(t.Logger.Has(LogLevel.Debug, "IFDB search for one found 1 result"));
     }
 }
