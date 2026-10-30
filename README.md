@@ -46,13 +46,17 @@ Dashboard → Plugins → IFDB:
 | Automatic match score | 90 | Lower to match more files automatically, at the risk of wrong matches |
 | Identify dialog score | 60 | Hides weaker results in Identify |
 | Site address | https://fanedit.org | `https://ifdb.fanedit.org` also works |
-| User-Agent | (plugin default) | See troubleshooting |
+| User-Agent | (plugin default) | How the plugin identifies itself to fanedit.org. Leave empty unless fanedit.org asks for something specific |
 | Delay between requests | 1000 ms | |
 | Cache pages for | 30 minutes | |
 
 ### 🩺 Troubleshooting
-- **"fanedit.org blocked the request" in the log:** fanedit.org sits behind Cloudflare bot protection, which sometimes refuses requests from servers. Wait and try again later. If it persists, set a different User-Agent in the plugin settings.
+- **"fanedit.org blocked the request" in the log:** fanedit.org is behind Cloudflare bot protection. As of October 2026 it challenges every automated request, from any network and with any User-Agent, so the plugin can't currently reach the site. Neither can the IFDB agents for Plex, which make the same kind of request. No plugin setting can fix this: it needs fanedit.org to let metadata tools through (for example with a Cloudflare rule for the `Jellyfin-IFDB/` User-Agent). The plugin logs this error at most every 15 minutes during a scan.
 - **A movie wasn't matched automatically:** the log says how many results were checked. Use **Identify**, or lower the automatic match score.
+- **More detail in the log:** create `logging.json` in Jellyfin's configuration folder (`/config/config/` in the official Docker image) with the content below. Jellyfin picks it up without a restart. The plugin then logs each fanedit.org request, each search's results, and every blocked request. Delete the file to go back to normal logging.
+  ```json
+  { "Serilog": { "MinimumLevel": { "Override": { "Jellyfin.Plugin.Ifdb": "Debug" } } } }
+  ```
 - **Items identified by version 1.10.11** stored a numeric IFDB id. They still work, and switch to the new id format on their next metadata refresh.
 
 ## Development

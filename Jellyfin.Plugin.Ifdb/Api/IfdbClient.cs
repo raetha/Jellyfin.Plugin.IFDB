@@ -107,9 +107,9 @@ internal sealed class IfdbClient
                 return [];
             }
 
-            if (_logger.IsEnabled(LogLevel.Information))
+            if (_logger.IsEnabled(LogLevel.Debug))
             {
-                _logger.LogInformation("IFDB search for {Keywords} found 1 result (fanedit.org went straight to {Url})", keywords, page.FinalUrl);
+                _logger.LogDebug("IFDB search for {Keywords} found 1 result (fanedit.org went straight to {Url})", keywords, page.FinalUrl);
             }
 
             return [ToSearchResult(entry)];
@@ -124,14 +124,15 @@ internal sealed class IfdbClient
             }
         }
 
-        if (results.Count > 0 && _logger.IsEnabled(LogLevel.Information))
+        // Debug level: the movie provider already logs each match outcome at Information.
+        if (results.Count > 0 && _logger.IsEnabled(LogLevel.Debug))
         {
-            _logger.LogInformation("IFDB search for {Keywords} found {Count} result(s)", keywords, results.Count);
+            _logger.LogDebug("IFDB search for {Keywords} found {Count} result(s)", keywords, results.Count);
         }
-        else if (results.Count == 0 && _logger.IsEnabled(LogLevel.Information))
+        else if (results.Count == 0 && _logger.IsEnabled(LogLevel.Debug))
         {
             // Enough detail to tell "no such fanedit" from a page that isn't what we expected.
-            _logger.LogInformation(
+            _logger.LogDebug(
                 "IFDB search for {Keywords} found no results (HTTP {Status}, {Bytes} characters, page title: {Title}, address: {Url})",
                 keywords,
                 (int)page.StatusCode,
@@ -238,7 +239,7 @@ internal sealed class IfdbClient
 
     /// <summary>
     /// Logs a failed fanedit.org call. Bot-protection blocks get one clear error every 15 minutes,
-    /// rather than one per item during a library scan.
+    /// rather than one per item during a library scan; the rest are logged at Debug.
     /// </summary>
     /// <param name="exception">The failure.</param>
     /// <param name="action">What was being done, for the message.</param>
@@ -250,18 +251,19 @@ internal sealed class IfdbClient
                 if (_logger.IsEnabled(LogLevel.Error))
                 {
                     _logger.LogError(
-                        "IFDB: fanedit.org blocked the request while {Action} ({Reason}). Its bot protection is refusing requests from this server. Try again later, or set a different User-Agent in the IFDB plugin settings (currently {UserAgent}).",
+                        "IFDB: fanedit.org blocked the request while {Action} ({Reason}). Its Cloudflare bot protection is refusing automated requests (User-Agent {UserAgent}). Further blocks in the next 15 minutes are only logged at Debug level. See {Help}",
                         action,
                         exception.Message,
-                        UserAgent);
+                        UserAgent,
+                        Constants.ProjectUrl + "#-troubleshooting");
                 }
 
                 break;
             case IfdbBlockedException:
-                // The full explanation is logged at most every 15 minutes; each block still gets a line.
-                if (_logger.IsEnabled(LogLevel.Warning))
+                // The full explanation is logged at most every 15 minutes; the rest only at Debug.
+                if (_logger.IsEnabled(LogLevel.Debug))
                 {
-                    _logger.LogWarning("IFDB: fanedit.org blocked the request while {Action} ({Reason})", action, exception.Message);
+                    _logger.LogDebug("IFDB: fanedit.org blocked the request while {Action} ({Reason})", action, exception.Message);
                 }
 
                 break;
