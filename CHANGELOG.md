@@ -2,7 +2,7 @@
 
 All notable changes to the IFDB plugin. Each version's section here becomes its release notes on GitHub and in Jellyfin's plugin catalog.
 
-The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/). Jellyfin shows them with a fourth `.0` (2.0.0 is `2.0.0.0`). Development builds use the fourth number as a build number (`2.0.0.12` is build 12 of the upcoming 2.0.0) and are published in a separate plugin repository.
+The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/). Jellyfin shows them with a fourth `.0` (2.0.0 is `2.0.0.0`). Development builds use the fourth number as a build number since the latest release (`2.0.0.12` is build 12 since 2.0.0) and are published in a separate plugin repository.
 
 ## [1.11.0] - 2026-10-30
 

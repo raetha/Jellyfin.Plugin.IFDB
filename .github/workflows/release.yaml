@@ -10,10 +10,15 @@ name: 'Release'
 #   clean (left alone if dev already has new work).
 # Maintenance branches (jellyfin-10.11): run this workflow manually on the branch ("Run
 #   workflow"). It releases the same way, without marking the release as the latest.
-# Dev: every push to dev builds MAJOR.MINOR.PATCH.<run number> from build.yaml's upcoming
-#   version, replaces the rolling "dev-build" pre-release, and makes it the only entry in
-#   manifest-dev.json. Dev builds stay out of manifest.json: Jellyfin updates plugins to the
-#   highest version in any repository, so mixing them would move release users onto test builds.
+# Dev: every push to dev builds <latest release>.<run number> (2.0.0.57 is build 57 since
+#   2.0.0, on the way to build.yaml's upcoming version), replaces the rolling "dev-build"
+#   pre-release, and makes it the only entry in manifest-dev.json. Numbering from the latest
+#   release rather than the upcoming one keeps the ordering right in Jellyfin, which installs
+#   the highest version across all repositories: the next release (2.1.0.0) is higher than
+#   every dev build before it, and every dev build after a release is higher than the release.
+#   So a server can keep both repositories: it gets each dev build, then the release.
+#   Each release from main also becomes manifest-dev.json's entry until the next dev build.
+#   Dev builds stay out of manifest.json, so release-only servers never get them.
 # If the repository has an image.png, it's packaged with the plugin and published next to the
 # manifest as the catalog image.
 # Everything runs the full CI (build, tests, coverage gate) first and publishes nothing if it fails.
@@ -41,6 +46,8 @@ jobs:
       tag: ${{ steps.version.outputs.tag }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0          # tags: dev builds are numbered from the latest release
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -55,7 +62,13 @@ jobs:
 
           case "$GITHUB_REF_NAME" in
             dev)
-              version="${planned%.*}.${GITHUB_RUN_NUMBER}"
+              # Latest three-part release tag on any branch (v2.0.0); the 1.10.11 tag had four parts.
+              last=$(git tag -l 'v*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1)
+              base="${last#v}"
+              if [ -z "$base" ]; then
+                base="0.0.0"
+              fi
+              version="${base}.${GITHUB_RUN_NUMBER}"
               echo "channel=dev" >> "$GITHUB_OUTPUT"
               echo "tag=dev-build" >> "$GITHUB_OUTPUT"
               ;;
@@ -138,7 +151,7 @@ jobs:
           else
             IFS=. read -r _ _ _ build <<< "$VERSION"
             {
-              echo "Development build ${build} of the upcoming ${planned%.*}, from dev (${GITHUB_SHA::7}): $(git log -1 --format=%s)"
+              echo "Development build ${build} since ${VERSION%.*}, on the way to ${planned%.*}, from dev (${GITHUB_SHA::7}): $(git log -1 --format=%s)"
               echo
               echo "For testing. Install it from the development plugin repository, used instead of the release one: https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/refs/heads/manifest/manifest-dev.json"
               echo
@@ -195,6 +208,12 @@ jobs:
           if [ "$CHANNEL" = "stable" ]; then
             manifest=manifest.json
             add "$manifest" ""
+            # Until the next dev build, the development repository offers this release too,
+            # so a server with both repositories sees the release as the newest version.
+            if [ "$GITHUB_REF_NAME" = main ]; then
+              add manifest-dev.json all
+              git -C "$worktree" add manifest-dev.json
+            fi
           else
             manifest=manifest-dev.json
             add "$manifest" all
