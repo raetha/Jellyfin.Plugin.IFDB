@@ -3,12 +3,12 @@
         "guid": "0f18c602-5d24-4f88-bb6e-9e59a2efb1cd",
         "versions": [
             {
-                "version": "2.0.0.16",
-                "changelog": "Development build 16 since 2.0.0, on the way to 2.0.1, from dev (7448313): Start 2.0.1: version and Unreleased changelog section\n\nFor testing. Install it from the development plugin repository, used instead of the release one: https://raw.githubusercontent.com/raetha/Jellyfin.Plugin.IFDB/refs/heads/manifest/manifest-dev.json\n\n### Changed\n- Updated the HtmlAgilityPack page-parsing library to 1.13.\n\n### Behind the scenes\n- More thorough tests: a newer coverage tool found conditions only ever tested one way, and they're now tested both ways.\n- Development builds are numbered from the latest release (`2.0.0.15` is build 15 since 2.0.0), so each release counts as newer than the dev builds before it. Servers can keep the release and development repositories configured together.\n- CI uses current GitHub Actions versions and a fixed Ubuntu runner image; CodeQL findings in the release scripts are fixed.",
+                "version": "2.0.0.18",
+                "changelog": "Development build 18 since 2.0.0, on the way to 2.0.1, from dev (df77017): Add funding file\n\nFor testing. Install it from the development plugin repository, used instead of the release one: https://raw.githubusercontent.com/raetha/Jellyfin.Plugin.IFDB/refs/heads/manifest/manifest-dev.json\n\n### Changed\n- Updated the HtmlAgilityPack page-parsing library to 1.13.\n\n### Behind the scenes\n- More thorough tests: a newer coverage tool found conditions only ever tested one way, and they're now tested both ways.\n- Development builds are numbered from the latest release (`2.0.0.15` is build 15 since 2.0.0), so each release counts as newer than the dev builds before it. Servers can keep the release and development repositories configured together.\n- CI uses current GitHub Actions versions and a fixed Ubuntu runner image; CodeQL findings in the release scripts are fixed.",
                 "targetAbi": "12.0.0.0",
-                "sourceUrl": "https://github.com/raetha/Jellyfin.Plugin.IFDB/releases/download/dev-build/ifdb_2.0.0.16.zip",
-                "checksum": "9004c921d5c2e1272ee64443c3604d1b",
-                "timestamp": "2026-10-30T20:05:53.024Z"
+                "sourceUrl": "https://github.com/raetha/Jellyfin.Plugin.IFDB/releases/download/dev-build/ifdb_2.0.0.18.zip",
+                "checksum": "7912a2d7c5954addecea71b33749c17d",
+                "timestamp": "2026-11-02T15:55:36.874Z"
             }
         ],
         "name": "IFDB",
