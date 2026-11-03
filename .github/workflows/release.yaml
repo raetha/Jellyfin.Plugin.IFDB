@@ -156,7 +156,7 @@ jobs:
               echo
               echo "For testing. Install it from the development plugin repository, used instead of the release one: https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/refs/heads/manifest/manifest-dev.json"
               echo
-              node scripts/changelog.js pending "$planned" || true
+              node scripts/changelog.js notes Unreleased || node scripts/changelog.js pending "$planned" || true
             } > "$RUNNER_TEMP/notes.md"
           fi
           cat "$RUNNER_TEMP/notes.md"
