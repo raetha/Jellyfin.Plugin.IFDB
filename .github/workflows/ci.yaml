@@ -34,6 +34,8 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Read build.yaml
         id: plugin
@@ -99,6 +101,8 @@ jobs:
       zip: ${{ steps.files.outputs.zip }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Read build.yaml
         id: plugin
@@ -147,3 +151,19 @@ jobs:
           name: plugin
           path: dist/
           if-no-files-found: error
+
+  # The one check the main ruleset requires: passes only when every check job above did, so
+  # jobs can be added or renamed without touching the ruleset.
+  ci:
+    name: CI passed
+    if: always()
+    needs: [test, package]
+    runs-on: ubuntu-24.04
+    permissions: {}
+    steps:
+      - name: Every check job passed
+        env:
+          RESULTS: ${{ toJSON(needs.*.result) }}
+        run: |
+          echo "$RESULTS"
+          if echo "$RESULTS" | grep -qE '"(failure|cancelled)"'; then exit 1; fi
