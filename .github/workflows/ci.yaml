@@ -10,9 +10,10 @@ on:
   push:
     branches: [main, dev, 'jellyfin-*']
     paths-ignore: ['**/*.md']
+  # Pull requests always run: `CI passed` is a required check, so a pull request that only
+  # changes Markdown would otherwise never get it and couldn't merge.
   pull_request:
     branches: [main, dev, 'jellyfin-*']
-    paths-ignore: ['**/*.md']
   workflow_dispatch:
   workflow_call:
     inputs:
@@ -88,10 +89,19 @@ jobs:
           npm ci --no-audit --no-fund
           npm test
 
+      # On dev, build.yaml holds the expected next version and its notes are under [Unreleased];
+      # a pull request into main (and main itself) needs the version's dated section, so an
+      # undated release can't merge.
       - name: CHANGELOG.md has notes for this version
+        env:
+          BASE_REF: ${{ github.base_ref }}
         run: |
           version=$(grep -Po '^version:\s*"?\K[0-9.]+' build.yaml)
-          node scripts/changelog.js notes "$version" > /dev/null
+          if [ "$BASE_REF" = main ] || [ "$GITHUB_REF" = refs/heads/main ]; then
+            node scripts/changelog.js released "$version"
+          else
+            node scripts/changelog.js pending "$version" > /dev/null
+          fi
 
   package:
     name: Package

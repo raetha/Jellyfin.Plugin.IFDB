@@ -1,10 +1,13 @@
 #!/usr/bin/env node
 // Reads release notes from CHANGELOG.md (Keep a Changelog format: "## [1.2.3] - date" sections).
 //
-//   node changelog.js notes <version> [CHANGELOG.md]
-//       Prints that version's section (without its heading). Fails if there isn't one.
+//   node changelog.js notes <version|Unreleased> [CHANGELOG.md]
+//       Prints that section (without its heading). Fails if there isn't one.
+//   node changelog.js pending <version> [CHANGELOG.md]
+//       That version's section if it has one, otherwise [Unreleased]: on dev, build.yaml holds
+//       the expected next version, whose notes are still under [Unreleased].
 //   node changelog.js build-yaml <version> <build.yaml> [CHANGELOG.md]
-//       Puts that section into build.yaml's changelog, so the packaged plugin carries it.
+//       Puts the pending notes into build.yaml's changelog, so the packaged plugin carries them.
 //   node changelog.js released <version> [CHANGELOG.md]
 //       Prints that version's release date ("## [2.0.0] - 2026-10-30"). Fails if the section
 //       is missing or not dated yet ("Unreleased"), so an undated version is never released.
@@ -30,7 +33,7 @@ function isHeading(line, version) {
 }
 
 function extractNotes(changelog, version) {
-  const wanted = semver(version);
+  const wanted = version === "Unreleased" ? version : semver(version);
   const lines = changelog.replace(/\r\n/g, "\n").split("\n");
   const start = lines.findIndex(l => isHeading(l, wanted));
   if (start < 0) {
@@ -47,6 +50,12 @@ function extractNotes(changelog, version) {
     throw new Error(`CHANGELOG.md's "## [${wanted}]" section is empty`);
   }
   return notes;
+}
+
+function pendingNotes(changelog, version) {
+  const wanted = semver(version);
+  const has = changelog.replace(/\r\n/g, "\n").split("\n").some(l => isHeading(l, wanted));
+  return extractNotes(changelog, has ? version : "Unreleased");
 }
 
 function releaseDate(changelog, version) {
@@ -73,19 +82,22 @@ function main(args) {
   if (command === "notes" && version) {
     const changelog = fs.readFileSync(files[0] || "CHANGELOG.md", "utf8");
     process.stdout.write(extractNotes(changelog, version) + "\n");
+  } else if (command === "pending" && version) {
+    const changelog = fs.readFileSync(files[0] || "CHANGELOG.md", "utf8");
+    process.stdout.write(pendingNotes(changelog, version) + "\n");
   } else if (command === "build-yaml" && version && files[0]) {
     const changelog = fs.readFileSync(files[1] || "CHANGELOG.md", "utf8");
-    const updated = setBuildYamlChangelog(fs.readFileSync(files[0], "utf8"), extractNotes(changelog, version));
+    const updated = setBuildYamlChangelog(fs.readFileSync(files[0], "utf8"), pendingNotes(changelog, version));
     fs.writeFileSync(files[0], updated);
   } else if (command === "released" && version) {
     const changelog = fs.readFileSync(files[0] || "CHANGELOG.md", "utf8");
     process.stdout.write(releaseDate(changelog, version) + "\n");
   } else {
-    throw new Error("Usage: changelog.js notes <version> [CHANGELOG.md] | build-yaml <version> <build.yaml> [CHANGELOG.md] | released <version> [CHANGELOG.md]");
+    throw new Error("Usage: changelog.js notes <version|Unreleased> [CHANGELOG.md] | pending <version> [CHANGELOG.md] | build-yaml <version> <build.yaml> [CHANGELOG.md] | released <version> [CHANGELOG.md]");
   }
 }
 
-module.exports = { semver, extractNotes, releaseDate, setBuildYamlChangelog, main };
+module.exports = { semver, extractNotes, pendingNotes, releaseDate, setBuildYamlChangelog, main };
 
 if (require.main === module) {
   try {
