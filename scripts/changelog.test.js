@@ -6,7 +6,7 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const YAML = require("yaml");
-const { semver, extractNotes, releaseDate, setBuildYamlChangelog, main } = require("./changelog");
+const { semver, extractNotes, pendingNotes, releaseDate, setBuildYamlChangelog, main } = require("./changelog");
 
 const changelog = `# Changelog
 
@@ -99,4 +99,12 @@ test("command line: notes and build-yaml", () => {
   assert.match(YAML.parse(fs.readFileSync(buildPath, "utf8")).changelog, /Requires Jellyfin 12/);
 
   assert.throws(() => main(["bogus"]), /Usage/);
+});
+
+test("pending notes: the version's section, or [Unreleased] while it has none", () => {
+  const withUnreleased = changelog.replace("## [Unreleased]\n", "## [Unreleased]\n\n### Added\n- Coming next.\n");
+  assert.equal(pendingNotes(withUnreleased, "2.0.0.0"), extractNotes(withUnreleased, "2.0.0"));
+  assert.equal(pendingNotes(withUnreleased, "2.0.1.0"), "### Added\n- Coming next.");
+  assert.equal(extractNotes(withUnreleased, "Unreleased"), "### Added\n- Coming next.");
+  assert.throws(() => pendingNotes(changelog, "2.0.1.0"), /is empty/);
 });

@@ -10,9 +10,10 @@ on:
   push:
     branches: [main, dev, 'jellyfin-*']
     paths-ignore: ['**/*.md']
+  # Pull requests always run: `CI passed` is a required check, so a pull request that only
+  # changes Markdown would otherwise never get it and couldn't merge.
   pull_request:
     branches: [main, dev, 'jellyfin-*']
-    paths-ignore: ['**/*.md']
   workflow_dispatch:
   workflow_call:
     inputs:
@@ -34,6 +35,8 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Read build.yaml
         id: plugin
@@ -86,10 +89,19 @@ jobs:
           npm ci --no-audit --no-fund
           npm test
 
+      # On dev, build.yaml holds the expected next version and its notes are under [Unreleased];
+      # a pull request into main (and main itself) needs the version's dated section, so an
+      # undated release can't merge.
       - name: CHANGELOG.md has notes for this version
+        env:
+          BASE_REF: ${{ github.base_ref }}
         run: |
           version=$(grep -Po '^version:\s*"?\K[0-9.]+' build.yaml)
-          node scripts/changelog.js notes "$version" > /dev/null
+          if [ "$BASE_REF" = main ] || [ "$GITHUB_REF" = refs/heads/main ]; then
+            node scripts/changelog.js released "$version"
+          else
+            node scripts/changelog.js pending "$version" > /dev/null
+          fi
 
   package:
     name: Package
@@ -99,6 +111,8 @@ jobs:
       zip: ${{ steps.files.outputs.zip }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Read build.yaml
         id: plugin
@@ -147,3 +161,19 @@ jobs:
           name: plugin
           path: dist/
           if-no-files-found: error
+
+  # The one check the main ruleset requires: passes only when every check job above did, so
+  # jobs can be added or renamed without touching the ruleset.
+  ci:
+    name: CI passed
+    if: always()
+    needs: [test, package]
+    runs-on: ubuntu-24.04
+    permissions: {}
+    steps:
+      - name: Every check job passed
+        env:
+          RESULTS: ${{ toJSON(needs.*.result) }}
+        run: |
+          echo "$RESULTS"
+          if echo "$RESULTS" | grep -qE '"(failure|cancelled)"'; then exit 1; fi

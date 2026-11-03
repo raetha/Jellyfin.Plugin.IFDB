@@ -92,9 +92,13 @@ internal sealed class IfdbRequestState : IDisposable
             return;
         }
 
-        foreach (var item in _pages.Where(i => i.Value.ExpiresAt <= now).ToList())
+        // ConcurrentDictionary allows removing entries while enumerating it.
+        foreach (var item in _pages)
         {
-            _pages.TryRemove(item.Key, out _);
+            if (item.Value.ExpiresAt <= now)
+            {
+                _pages.TryRemove(item.Key, out _);
+            }
         }
 
         // Still full of live pages: drop the ones closest to expiring, leaving a quarter free.

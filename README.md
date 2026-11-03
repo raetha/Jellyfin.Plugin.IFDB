@@ -14,10 +14,10 @@ A Jellyfin movie metadata provider for the [Internet Fanedit Database (IFDB)](ht
 | 10.11 | 1.x | Maintenance only, from the `jellyfin-10.11` branch |
 
 #### Development builds
-Every change to the `dev` branch is published as a test build, numbered from the upcoming version plus a build number (`2.1.0.57` is build 57 of the upcoming 2.1.0). They're in a separate repository:
+Every change to the `dev` branch is published as a test build, numbered from the latest release plus a build number (`2.0.0.57` is build 57 since 2.0.0). They're in a separate repository:
 `https://raw.githubusercontent.com/raetha/Jellyfin.Plugin.IFDB/refs/heads/manifest/manifest-dev.json`
 
-Use it **instead of** the release repository, not alongside it. Jellyfin combines all your repositories and updates each plugin to the highest version it finds in any of them, so with both added, release and dev builds would replace each other. To go back to releases, swap the repositories back and install the release from the catalog. Between development cycles the latest dev build has the same code as the latest release, so staying on the dev repository is also fine.
+You can add it alongside the release repository. Jellyfin installs the highest version it finds in any repository, and the numbering keeps that in order: each dev build is higher than the release before it, and the next release (`2.1.0.0`) is higher than every dev build that led up to it. So a server with both gets every dev build and then the release, and moves on to dev builds again after that. To stop getting dev builds, remove the development repository; you'll move back to releases with the next one.
 
 What changed in each version is in [CHANGELOG.md](CHANGELOG.md).
 
@@ -61,55 +61,7 @@ Dashboard → Plugins → IFDB:
 
 ## Development
 
-### Build and test
-```bash
-dotnet build -c Release
-dotnet test -c Release -p:CollectCoverage=true   # fails below 100% line and branch coverage
-(cd scripts && npm ci && npm test)               # release tooling tests
-```
-
-Tests use saved fanedit.org pages in `Jellyfin.Plugin.Ifdb.Tests/Fixtures`, so they never touch the network. `LiveSiteTests` checks known searches and entries against the real site and only runs when asked:
-```bash
-IFDB_LIVE_TESTS=1 dotnet test --filter LiveSiteTests   # IFDB_USER_AGENT=... to try another User-Agent
-```
-
-### Versioning
-Plugin versions are [SemVer](https://semver.org/) (`MAJOR.MINOR.PATCH`), written as Jellyfin's four-part version with `.0` on the end (`2.1.0` → `2.1.0.0`). Which Jellyfin a build runs on is set separately by `targetAbi` in `build.yaml`. A new plugin major version accompanies a new minimum Jellyfin version.
-
-Development builds use the upcoming version from `build.yaml` with the CI run number as the fourth part (`2.1.0.57`). They're only listed in `manifest-dev.json`, never in `manifest.json`.
-
-Release notes live in [CHANGELOG.md](CHANGELOG.md) ([Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format). The release workflow uses a version's section as the GitHub release notes, the changelog in Jellyfin's catalog, and the changelog inside the plugin package. CI fails if the version in `build.yaml` has no section.
-
-### Supported Jellyfin versions
-The current Jellyfin major is supported on `main`. When a new Jellyfin major ships, the previous line moves to a `jellyfin-<version>` branch for fixes only, and its last release stays installable for servers that haven't upgraded. A weekly check builds and tests against the newest Jellyfin packages so API changes are caught early.
-
-### Branches and workflows
-| Branch | Purpose | Workflows |
-|---|---|---|
-| `dev` | Day-to-day work | CI; every push publishes a dev build |
-| `main` | Released code: one squash-merged pull request from `dev` per release | CI; each merge releases build.yaml's version if it isn't released yet, then resets `dev` to `main` |
-| `jellyfin-10.11` | Fixes for Jellyfin 10.11 (plugin 1.x) | CI; releases by running the Release workflow on this branch |
-
-- **CI** (`ci.yaml`): build with analyzers as errors, tests with the coverage gate, release-script tests, packaging. Runs on every push and pull request.
-- **Release** (`release.yaml`): runs CI, then publishes. Dev pushes replace the `dev-build` pre-release and `manifest-dev.json`. A push to `main` with a version that has no `vX.Y.Z` tag yet creates that release, with notes from `CHANGELOG.md` and the files attached, and adds it to `manifest.json`. It then resets `dev` to `main` if they hold the same files.
-- **Weekly checks** (`compatibility.yaml`): newest Jellyfin packages, and the live fanedit.org tests. The live tests also run on every push to `dev`. Scheduled and manual runs only work once the file is on `main`.
-- Code scanning uses GitHub's default CodeQL setup (repository settings); Dependabot runs weekly against `dev`.
-
-### Releasing
-While working, add notes under the upcoming version's heading in `CHANGELOG.md` (for example `## [2.1.0] - Unreleased`), with `build.yaml` and `Directory.Build.props` set to that version (`2.1.0.0`).
-
-1. On `dev`, replace `Unreleased` in that heading with the release date.
-2. Open a pull request from `dev` into `main` and squash-merge it.
-3. That's it. The merge releases `v2.1.0`: the workflow checks the changelog heading is dated, builds and tests, creates the GitHub release with the changelog section as its notes, attaches the files and adds the version to `manifest.json`. A version that's already tagged isn't released again, and an undated heading fails the run instead of releasing.
-4. `dev` is then reset to `main` automatically, so the next cycle starts from the released code. If something landed on `dev` while the pull request was open, `dev` is left alone; merge `main` into it by hand.
-5. On `dev`, start the next version: bump `build.yaml` and `Directory.Build.props`, and add its heading to `CHANGELOG.md`.
-
-For a Jellyfin 10.11 fix, commit to `jellyfin-10.11` (with its changelog heading dated), then run the **Release** workflow on that branch from the Actions tab. Its releases aren't marked as GitHub's "latest" release.
-
-### Plugin repository files
-The repository manifests Jellyfin reads (`manifest.json` for releases, `manifest-dev.json` for dev builds, plus the catalog image) live on their own `manifest` branch. Every release and dev build updates them, so keeping them off `main` and `dev` avoids a stream of bot commits (and CI runs) on the working branches, avoids merge conflicts between them, and gives both release lines (`main` and `jellyfin-10.11`) one shared manifest.
-
-The plugin's image is `image.png` in the repository root: it's packaged with the plugin (shown on its page once installed) and copied to the `manifest` branch as the catalog image.
+Building, testing, versioning, branches and releasing are in [docs/development.md](docs/development.md); contributing is in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ### 🙏 Credits
 Scraping and title matching are based on [circulon/fanedit-provider](https://github.com/circulon/fanedit-provider) (and its predecessor [IFDB.bundle](https://github.com/circulon/IFDB.bundle)) for Plex. The plugin image is fanedit-provider's logo, used under the MIT License; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
