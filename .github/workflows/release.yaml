@@ -1,7 +1,7 @@
 name: 'Release'
 
 # Stable: each release is one pull request from dev into main. When it's merged, the push to
-#   main releases build.yaml's version if there's no vX.Y.Z tag for it yet: it builds plugin
+#   main releases build.yaml's version if there's no X.Y.Z tag for it yet: it builds plugin
 #   version X.Y.Z.0, creates the GitHub release with that version's CHANGELOG.md section as
 #   its notes, attaches the files and adds the version to manifest.json. The CHANGELOG.md
 #   heading must be dated ("## [2.1.0] - 2026-11-20"), so an undated version fails instead of
@@ -63,9 +63,9 @@ jobs:
 
           case "$GITHUB_REF_NAME" in
             dev)
-              # Latest three-part release tag on any branch (v2.0.0); the 1.10.11 tag had four parts.
-              last=$(git tag -l 'v*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1)
-              base="${last#v}"
+              # Latest three-part release tag on any branch (2.1.0, or v2.0.0 before tags dropped
+              # the "v"); the 1.10.11 tag had four parts.
+              base=$(git tag -l | { grep -E '^v?[0-9]+\.[0-9]+\.[0-9]+$' || true; } | sed 's/^v//' | sort -V | tail -1)
               if [ -z "$base" ]; then
                 base="0.0.0"
               fi
@@ -79,8 +79,8 @@ jobs:
                 exit 1
               fi
               version="$planned"
-              tag="v${planned%.0}"
-              if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null; then
+              tag="${planned%.0}"  # no leading "v" (releases up to 2.0.0 have one)
+              if git ls-remote --exit-code --tags origin "refs/tags/$tag" "refs/tags/v$tag" >/dev/null; then
                 echo "::notice::$tag is already released; nothing to publish."
                 echo "channel=skip" >> "$GITHUB_OUTPUT"
                 exit 0

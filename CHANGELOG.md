@@ -13,6 +13,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - More thorough tests: a newer coverage tool found conditions only ever tested one way, and they're now tested both ways.
 - Development builds are numbered from the latest release (`2.0.0.15` is build 15 since 2.0.0), so each release counts as newer than the dev builds before it. Servers can keep the release and development repositories configured together.
 - CI uses current GitHub Actions versions and a fixed Ubuntu runner image; CodeQL findings in the release scripts are fixed.
+- Release tags no longer start with "v" (`2.1.0`, not `v2.1.0`), like most projects; earlier releases keep their tags.
 - CI hardening: a single `CI passed` check gates releases, and no job keeps the workflow token on disk unless it pushes with git.
 - The changelog keeps the next release's notes under `[Unreleased]` until the release pull request dates them, and a pull request into `main` can't merge without that date. New developer docs: `docs/development.md` (from the README), `CLAUDE.md`, `CONTRIBUTING.md` and `docs/audits.md`.
 
