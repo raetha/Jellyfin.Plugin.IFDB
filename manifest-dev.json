@@ -3,12 +3,12 @@
         "guid": "0f18c602-5d24-4f88-bb6e-9e59a2efb1cd",
         "versions": [
             {
-                "version": "2.0.0.19",
-                "changelog": "Development build 19 since 2.0.0, on the way to 2.0.1, from dev (2e4ec45): CI gate check, persist-credentials: false; Claude runs dev (#7)\n\nFor testing. Install it from the development plugin repository, used instead of the release one: https://raw.githubusercontent.com/raetha/Jellyfin.Plugin.IFDB/refs/heads/manifest/manifest-dev.json\n\n### Changed\n- Updated the HtmlAgilityPack page-parsing library to 1.13.\n\n### Behind the scenes\n- More thorough tests: a newer coverage tool found conditions only ever tested one way, and they're now tested both ways.\n- Development builds are numbered from the latest release (`2.0.0.15` is build 15 since 2.0.0), so each release counts as newer than the dev builds before it. Servers can keep the release and development repositories configured together.\n- CI uses current GitHub Actions versions and a fixed Ubuntu runner image; CodeQL findings in the release scripts are fixed.\n- CI hardening: a single `CI passed` check gates releases, and no job keeps the workflow token on disk unless it pushes with git.",
+                "version": "2.0.0.20",
+                "changelog": "Development build 20 since 2.0.0, on the way to 2.0.1, from dev (a4f9b6e): Apply the repo workflow: docs, [Unreleased], release-mode check (#8)\n\nFor testing. Install it from the development plugin repository, used instead of the release one: https://raw.githubusercontent.com/raetha/Jellyfin.Plugin.IFDB/refs/heads/manifest/manifest-dev.json\n\n### Changed\n- Updated the HtmlAgilityPack page-parsing library to 1.13.\n\n### Internal\n- More thorough tests: a newer coverage tool found conditions only ever tested one way, and they're now tested both ways.\n- Development builds are numbered from the latest release (`2.0.0.15` is build 15 since 2.0.0), so each release counts as newer than the dev builds before it. Servers can keep the release and development repositories configured together.\n- CI uses current GitHub Actions versions and a fixed Ubuntu runner image; CodeQL findings in the release scripts are fixed.\n- CI hardening: a single `CI passed` check gates releases, and no job keeps the workflow token on disk unless it pushes with git.\n- The changelog keeps the next release's notes under `[Unreleased]` until the release pull request dates them, and a pull request into `main` can't merge without that date. New developer docs: `docs/development.md` (from the README), `CLAUDE.md`, `CONTRIBUTING.md` and `docs/audits.md`.",
                 "targetAbi": "12.0.0.0",
-                "sourceUrl": "https://github.com/raetha/Jellyfin.Plugin.IFDB/releases/download/dev-build/ifdb_2.0.0.19.zip",
-                "checksum": "cede1f4521a6ad8489bec805602371fd",
-                "timestamp": "2026-11-03T03:59:47.427Z"
+                "sourceUrl": "https://github.com/raetha/Jellyfin.Plugin.IFDB/releases/download/dev-build/ifdb_2.0.0.20.zip",
+                "checksum": "7e7859cc15f4eee8a0e9b185c35d1185",
+                "timestamp": "2026-11-03T05:00:16.220Z"
             }
         ],
         "name": "IFDB",
