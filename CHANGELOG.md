@@ -16,6 +16,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Release tags no longer start with "v" (`2.1.0`, not `v2.1.0`), like most projects; earlier releases keep their tags.
 - CI hardening: a single `CI passed` check gates releases, and no job keeps the workflow token on disk unless it pushes with git.
 - The changelog keeps the next release's notes under `[Unreleased]` until the release pull request dates them, and a pull request into `main` can't merge without that date. New developer docs: `docs/development.md` (from the README), `CLAUDE.md`, `CONTRIBUTING.md` and `docs/audits.md`.
+- The license names the copyright holder as Elias Hunt (raetha).
 
 ## [2.0.0] - 2026-10-30
 
